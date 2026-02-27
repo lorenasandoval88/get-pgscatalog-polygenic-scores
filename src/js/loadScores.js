@@ -18,16 +18,17 @@ function quantile(sorted, q) {
 	return sorted[base] + rest * (sorted[base + 1] - sorted[base]);
 }
 
-async function saveScoreSummary(summary) {
+async function saveScoreSummary(results) {
 	if (!window.localforage) return;
 	await window.localforage.setItem(SCORE_SUMMARY_KEY, {
 		savedAt: new Date().toISOString(),
-		summary,
+		summary: results.summary,
+		scores: results.scores,
 	});
 }
 
 async function getStoredScoreSummary() {
-    console.log("checking local cache for score summary...");
+    // console.log("checking local cache for score summary...");
 
 	if (!window.localforage) return null;
 	return window.localforage.getItem(SCORE_SUMMARY_KEY);
@@ -171,14 +172,66 @@ function renderPlot(summary) {
 	Plotly.newPlot(chartDiv, data, layout, { responsive: true });
 }
 
+// ES6 MODULE: loadScores() is the main function to get scores data and summary, using cache if available and valid, and falling back to cache if fetch fails. loadStats() is the main function to render stats and plot, calling loadScores() to get data and summary, and updating source status and output messages accordingly.
+// get scores data from cache if available and not too old, and return results;
+// if no cache or cache is too old, fetch from PGS REST API, compute summary, cache it.
+// if fetch fails but cache exists, use cache as fallback with notice. if no cache and fetch fails, show error.
+export async function loadScores() {
+	console.log("loadScores():Loading scores function...");
+	const results = {
+		scores: [],
+		summary: null,
+	};
+
+	const cached = await getStoredScoreSummary();
+	console.log("loadScores():Cached score summary:", cached);
+
+	try {
+		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
+			results.summary = cached.summary;
+			results.scores = cached.scores ?? [];
+	
+			return results;
+		}
+
+		const scores = await fetchAllScores({ pageSize: 200 });
+		const summary = computeSummary(scores);
+		results.scores = scores;
+		results.summary = summary;
+		await saveScoreSummary(results);
+		console.log("------------------------------");
+		console.log("Total scores fetched:", scores.length);
+		console.log("Fetched scores data:", scores);
+		console.log("Summary:", summary);
+
+		return results;
+	} catch (error) {
+		if (cached?.summary) {
+			results.summary = cached.summary;
+			results.scores = cached.scores ?? [];
+
+		} 
+		console.error(error);
+		return results;
+	}
+}
+
 async function loadStats() {
 	const sourceStatus = document.getElementById("scoreSourceStatus");
 	const output = document.getElementById("scoreOutput");
 	const cached = await getStoredScoreSummary();
-    console.log("Cached score summary:", cached);
+	//console.log("Cached score summary:", cached);
 
 	try {
 		if (sourceStatus) sourceStatus.textContent = "Source: loading PGS score metadata...";
+
+		const results = await loadScores();
+		const summary = results.summary;
+		if (!summary) {
+			if (sourceStatus) sourceStatus.textContent = "Source: unavailable";
+			if (output) output.textContent = "Error loading stats: missing summary data.";
+			return { scores: [], summary: null };
+		}
 
 		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
 			renderStats(cached.summary);
@@ -187,16 +240,8 @@ async function loadStats() {
 			if (output) {
 				output.textContent = `Loaded ${formatNumber(cached.summary.totalScores)} cached scores summary (${cached.savedAt}).`;
 			}
-			return;
+			return results;
 		}
-
-		const scores = await fetchAllScores({ pageSize: 200 });
-		const summary = computeSummary(scores);
-		await saveScoreSummary(summary);
-        console.log('------------------------------')
-        console.log("Total scores fetched:", scores.length);
-        console.log("Fetched scores data:", scores);
-        console.log("Summary:", summary);
 		renderStats(summary);
 		renderPlot(summary);
 
@@ -204,7 +249,12 @@ async function loadStats() {
 			output.textContent = `Loaded ${formatNumber(summary.totalScores)} scores from PGS Catalog.`;
 		}
 		if (sourceStatus) sourceStatus.textContent = "Source: PGS Catalog REST API (live)";
+		return results;
 	} catch (error) {
+		const results = {
+			scores: cached?.scores ?? [],
+			summary: cached?.summary ?? null,
+		};
 		if (cached?.summary) {
 			renderStats(cached.summary);
 			renderPlot(cached.summary);
@@ -217,6 +267,7 @@ async function loadStats() {
 			if (output) output.textContent = `Error loading stats: ${error.message}`;
 		}
 		console.error(error);
+		return results;
 	}
 }
 
