@@ -2,20 +2,30 @@
   "name": "get-pgscatalog-polygenic-scores",
   "version": "1.0.0",
   "description": "Retreives polygenic scores from the PGS Catalog..",
-  "main": "sdk.js",
+  "main": "./dist/sdk.mjs",
+  "module": "./dist/sdk.mjs",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/sdk.mjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "rollup -c",
-    "build:watch": "rollup -c -w"
+    "build:watch": "rollup -c -w",
+    "prepublishOnly": "npm run build"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
+  "author": "Lorena Sandoval",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores/issues"
   },
@@ -24,8 +34,10 @@
     "localforage": "^1.10.0"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^29.0.0",
-    "@rollup/plugin-node-resolve": "^16.0.3",
-    "rollup": "^4.59.0"
+    "@rollup/plugin-commonjs": "^28.0.0",
+    "@rollup/plugin-json": "^6.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
+    "rollup": "^4.0.0"
   }
 }
