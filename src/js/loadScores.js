@@ -216,6 +216,15 @@ export async function loadScores() {
 	}
 }
 
+// const data = await loadScores();
+// const variantSubset30to70 = (data.scores ?? []).filter((score) => {
+// 	const variants = Number(score?.variants_number);
+// 	return Number.isFinite(variants) && variants >= 30 && variants <= 70;
+// });
+// console.log("Scores with variants_number between 30 and 70:", variantSubset30to70.length);
+// console.log("Subset sample (first 20):", variantSubset30to70.slice(0, 20));
+
+
 async function loadStats() {
 	const sourceStatus = document.getElementById("scoreSourceStatus");
 	const output = document.getElementById("scoreOutput");
