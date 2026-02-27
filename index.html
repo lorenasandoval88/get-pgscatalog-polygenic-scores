@@ -36,7 +36,8 @@
                             target="_blank">Code</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores/wiki"
+                        <a class="nav-link"
+                            href="https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores/wiki"
                             target="_blank">Docs</a>
                     </li>
                 </ul>
@@ -55,19 +56,24 @@
 
             <!-- RIGHT: PGS Catalog Statistics -->
             <section class="col-md-9 col-lg-10">
-                <h6 class="mb-3">Data Source: <a
-                        href="https://www.pgscatalog.org/" target="_blank"
+                <h6 class="mb-3">Data Source: <a href="https://www.pgscatalog.org/" target="_blank"
                         rel="noopener noreferrer">PGS Catalog</a></h6>
 
                 <hr class="my-3" />
                 <h1>PGS Catalog Statistics</h1>
-                <div id="sourceStatus" class="small text-muted mb-2">Source: checking...</div>
+                <div id="traitSourceStatus" class="small text-muted mb-2">Source: checking...</div>
 
-                     <div id="stats" class="mb-3"></div>
-                <div id="chart" style="width:700px;height:400px;"></div>
-                <pre id="output"></pre>
+                <div id="traitDiv" class="mb-3"></div>
+                <div id="traitChart" style="width:700px;height:400px;"></div>
+                <pre id="traitOutput"></pre>
 
                 <hr class="my-4" />
+
+                  <div id="scoreSourceStatus" class="small text-muted mb-2">Source: checking...</div>
+
+                <div id="scoreDiv" class="mb-3"></div>
+                <div id="scoreChart" style="width:700px;height:400px;"></div>
+                <pre id="scoreOutput"></pre>
                 <!-- <h2>Participant Profiles</h2>
                 <p class="text-muted">First 10 unique participants with 23andMe data</p>
                 <div id="profilesTable">Loading profiles...</div> -->
@@ -77,12 +83,15 @@
 
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/localforage@1.10.0/dist/localforage.min.js"></script>
 
     <!-- Your existing modules -->
     <!-- <script type="module" src="./dist/sdk.mjs"></script> -->
     <script type="module" src="./src/js/main.js"></script>
-    <script src="./src/js/loadStats.js"></script>
-    <script src="./src/js/loadPgs.js"></script>
+    <script type="module" src="./src/js/loadStats.js"></script>
+    <script type="module" src="./src/js/loadPgs.js"></script>
+    <script type="module" src="./src/js/loadTraits.js"></script>
+    <script type="module" src="./src/js/loadScores.js"></script>
 
 </body>
 
