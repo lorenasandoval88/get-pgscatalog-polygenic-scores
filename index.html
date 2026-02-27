@@ -84,19 +84,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Your existing modules -->
-    <!-- <script type="module" src="./dist/sdk.mjs"></script> -->
-    <!-- <script type="module" src="./src/js/main.js"></script>
-    <script type="module" src="./src/js/loadStats.js"></script>
-    <script type="module" src="./src/js/loadPgs.js"></script> -->
-    <!-- This guarantees runtime uses Rollup outputs only.
-    If you want loadPgs/main behavior too, I can add them to Rollup 
-    and include their bundles instead of removing them. -->
-
-       <!-- Your existing modules -->
-    <!-- bundle-only loading -->
-    <script type="module" src="./dist/loadTraits.bundle.mjs"></script>
-    <script type="module" src="./dist/loadScores.bundle.mjs"></script>
+     <!-- Bundle entry -->
+    <script type="module" src="./dist/sdk.mjs"></script>
 
 </body>
 
