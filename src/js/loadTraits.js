@@ -1,4 +1,6 @@
 
+import localforage from "localforage";
+
 
 // load all traits (paginated) and log stats about them to console  
 const BASE = "https://www.pgscatalog.org/rest";
@@ -53,8 +55,8 @@ function formatNumber(value, decimals = 0) {
 }
 
 async function saveTraitSummary(summary) {
-	if (!window.localforage) return;
-	await window.localforage.setItem(TRAIT_SUMMARY_KEY, {
+	if (!localforage) return;
+	await localforage.setItem(TRAIT_SUMMARY_KEY, {
 		savedAt: new Date().toISOString(),
 		summary,
 	});
@@ -62,8 +64,8 @@ async function saveTraitSummary(summary) {
 
 async function getStoredTraitSummary() {
     console.log("checking local cache for trait summary...");
-	if (!window.localforage) return null;
-	return window.localforage.getItem(TRAIT_SUMMARY_KEY);
+	if (!localforage) return null;
+	return localforage.getItem(TRAIT_SUMMARY_KEY);
 }
 
 function isCacheWithinMonths(savedAt, months = 3) {
