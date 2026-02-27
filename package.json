@@ -1,0 +1,24 @@
+{
+  "name": "get-pgscatalog-polygenic-scores",
+  "version": "1.0.0",
+  "description": "Retreives polygenic scores from the PGS Catalog..",
+  "main": "sdk.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores/issues"
+  },
+  "homepage": "https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores#readme",
+  "dependencies": {
+    "localforage": "^1.10.0"
+  }
+}

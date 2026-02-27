@@ -1,5 +1,19 @@
 const PGS_BASE = "https://www.pgscatalog.org/rest";
 const SCORE_SUMMARY_KEY = "pgs:score-summary";
+let localforageInstance = null;
+
+async function getLocalforage() {
+	if (localforageInstance) return localforageInstance;
+
+	try {
+		const mod = await import("localforage");
+		localforageInstance = mod.default ?? mod;
+	} catch {
+		localforageInstance = globalThis.localforage ?? null;
+	}
+
+	return localforageInstance;
+}
 
 function formatNumber(value, decimals = 0) {
 	if (value == null || Number.isNaN(value)) return "NR";
@@ -19,8 +33,9 @@ function quantile(sorted, q) {
 }
 
 async function saveScoreSummary(results) {
-	if (!window.localforage) return;
-	await window.localforage.setItem(SCORE_SUMMARY_KEY, {
+	const localforage = await getLocalforage();
+	if (!localforage) return;
+	await localforage.setItem(SCORE_SUMMARY_KEY, {
 		savedAt: new Date().toISOString(),
 		summary: results.summary,
 		scores: results.scores,
@@ -30,8 +45,9 @@ async function saveScoreSummary(results) {
 async function getStoredScoreSummary() {
     // console.log("checking local cache for score summary...");
 
-	if (!window.localforage) return null;
-	return window.localforage.getItem(SCORE_SUMMARY_KEY);
+	const localforage = await getLocalforage();
+	if (!localforage) return null;
+	return localforage.getItem(SCORE_SUMMARY_KEY);
 }
 
 function isCacheWithinMonths(savedAt, months = 3) {
