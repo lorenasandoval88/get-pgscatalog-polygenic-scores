@@ -49,9 +49,14 @@ function isCacheWithinMonths(savedAt, months = 3) {
 async function fetchAllScores({ pageSize = 200 } = {}) {
 	let offset = 0;
 	const all = [];
+	let page = 0;
+
+	console.log(`[fetchAllScores] start pageSize=${pageSize}`);
 
 	while (true) {
+		page += 1;
 		const url = `${PGS_BASE}/score/all?format=json&limit=${pageSize}&offset=${offset}`;
+		console.log(`[fetchAllScores] page ${page} request: ${url}`);
 		const response = await fetch(url);
 		if (!response.ok) throw new Error(`HTTP ${response.status} on ${url}`);
 		const data = await response.json();
@@ -59,13 +64,25 @@ async function fetchAllScores({ pageSize = 200 } = {}) {
 		const results = Array.isArray(data) ? data : (data.results ?? []);
 		if (!Array.isArray(results)) throw new Error("Unexpected response format from PGS API.");
 
+		console.log(
+			`[fetchAllScores] page ${page} received=${results.length} total_so_far=${all.length + results.length}`
+		);
+
 		all.push(...results);
 
-		if (results.length === 0) break;
-		if (!Array.isArray(data) && data.next == null && results.length < pageSize) break;
+		if (results.length === 0) {
+			console.log(`[fetchAllScores] stop: empty page at page ${page}`);
+			break;
+		}
+		if (!Array.isArray(data) && data.next == null && results.length < pageSize) {
+			console.log(`[fetchAllScores] stop: last page reached at page ${page}`);
+			break;
+		}
 
 		offset += results.length;
+		console.log(`[fetchAllScores] next offset=${offset}`);
 	}
+	console.log(`[fetchAllScores] done total=${all.length}`);
 	return all;
 }
 
