@@ -286,3 +286,4 @@ window.loadStats = loadStats;
 document.addEventListener("DOMContentLoaded", () => {
 	loadStats();
 });
+

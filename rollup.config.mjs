@@ -11,7 +11,7 @@ const plugins = [
 
 
 export default [{
-        input: "src/js/loadScores.mjs",
+    input: "src/js/loadScores.js",
         output: {
             file: "dist/loadScores.bundle.mjs",
             format: "es",

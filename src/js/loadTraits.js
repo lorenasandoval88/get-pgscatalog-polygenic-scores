@@ -55,7 +55,6 @@ function formatNumber(value, decimals = 0) {
 }
 
 async function saveTraitSummary(summary) {
-	if (!localforage) return;
 	await localforage.setItem(TRAIT_SUMMARY_KEY, {
 		savedAt: new Date().toISOString(),
 		summary,
@@ -64,7 +63,6 @@ async function saveTraitSummary(summary) {
 
 async function getStoredTraitSummary() {
     console.log("checking local cache for trait summary...");
-	if (!localforage) return null;
 	return localforage.getItem(TRAIT_SUMMARY_KEY);
 }
 
