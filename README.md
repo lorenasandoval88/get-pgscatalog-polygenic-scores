@@ -12,7 +12,7 @@ https://lorenasandoval88.github.io/get-pgscatalog-polygenic-scores/
 ---
 
 ## Documentation
-available in the wiki](https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores/wiki). 
+Available in the [wiki](https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores/wiki). 
 
 ---
 
