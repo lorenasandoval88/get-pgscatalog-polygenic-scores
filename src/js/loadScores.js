@@ -345,13 +345,19 @@ export async function loadAllScores() {
 
 // source scores from the cached pgs:all-score-summary dataset first 
 // (filtering .scores by requested IDs), and only fall back to network if needed. 
-export async function loadScores(ids) {
+export async function loadScores(ids, ...moreIds) {
 	console.log("loadScores():Loading scores function...");
 	const results = {
 		scores: [],
 		summary: null,
 	};
-	const requestedIds = [...new Set((ids ?? []).map((id) => String(id)))];
+	const rawIds = moreIds.length ? [ids, ...moreIds] : ids;
+	const inputIds = Array.isArray(rawIds) ? rawIds : [rawIds];
+	const requestedIds = [...new Set(
+		inputIds
+			.map((id) => String(id ?? "").trim())
+			.filter(Boolean)
+	)];
 	const allScoresCached = await getStoredScoreSummary(ALL_SCORE_SUMMARY_KEY);
 	console.log("loadScores():all-score cache present:", Boolean(allScoresCached?.scores?.length));
 
