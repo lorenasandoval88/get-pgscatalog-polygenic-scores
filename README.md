@@ -9,6 +9,10 @@ This lightweight JavaScript SDK fetches PGS score information, caches it in brow
 ## Live Demo
 
 https://lorenasandoval88.github.io/get-pgscatalog-polygenic-scores/
+---
+
+## Documentation
+Available in the [wiki](https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores/wiki). 
 
 ---
 
