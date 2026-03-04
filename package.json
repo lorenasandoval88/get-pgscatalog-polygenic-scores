@@ -1,7 +1,7 @@
 {
-  "name": "get-pgscatalog-polygenic-scores",
+  "name": "get-pgscatalog-scores",
   "version": "1.0.0",
-  "description": "Retreives polygenic scores from the PGS Catalog..",
+  "description": "Retrieves polygenic scores from the PGS Catalog.",
   "main": "./dist/sdk.mjs",
   "module": "./dist/sdk.mjs",
   "type": "module",
@@ -21,15 +21,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores.git"
+    "url": "git+https://github.com/lorenasandoval88/get-pgscatalog-scores.git"
   },
   "keywords": [],
   "author": "Lorena Sandoval",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores/issues"
+    "url": "https://github.com/lorenasandoval88/get-pgscatalog-scores/issues"
   },
-  "homepage": "https://github.com/lorenasandoval88/get-pgscatalog-polygenic-scores#readme",
+  "homepage": "https://github.com/lorenasandoval88/get-pgscatalog-scores#readme",
   "dependencies": {
     "localforage": "^1.10.0"
   },
