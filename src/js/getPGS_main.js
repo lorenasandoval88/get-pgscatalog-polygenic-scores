@@ -1,5 +1,5 @@
-import {getScoresPerTrait, loadScores, loadAllScores, loadScoreStats } from "./pgs_loadScores.js";
-import { fetchTraits, loadTraitStats } from "./pgs_loadTraits.js";
+import {getScoresPerTrait, loadScores, loadAllScores, loadScoreStats } from "./getPGS_loadScores.js";
+import { fetchTraits, loadTraitStats } from "./getPGS_loadTraits.js";
 
 export async function initStats() {
 	await Promise.allSettled([loadTraitStats(), loadScoreStats()]);

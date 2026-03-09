@@ -11,7 +11,7 @@ const plugins = [
 
 
 export default [{
-    input: "src/js/pgs_loadScores.js",
+    input: "src/js/getPGS_loadScores.js",
         output: {
             file: "dist/loadScores.bundle.mjs",
             format: "es",
@@ -20,7 +20,7 @@ export default [{
         plugins,
     },
     {
-        input: "src/js/pgs_loadTraits.js",
+        input: "src/js/getPGS_loadTraits.js",
         output: {
             file: "dist/loadTraits.bundle.mjs",
             format: "es",
