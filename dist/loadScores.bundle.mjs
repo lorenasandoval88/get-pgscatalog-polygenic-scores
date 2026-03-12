@@ -2838,9 +2838,10 @@ var localforage = /*@__PURE__*/getDefaultExportFromCjs(localforageExports);
 
 const PGS_BASE = "https://www.pgscatalog.org/rest";
 
-const ALL_SCORE_SUMMARY_KEY = "pgs:all-score-summary"; //loadAllScores() & loadScores() uses this key to cache the full list of scores and their summary, which loadScores() can then use to source individual scores by ID without needing to fetch from network if cache is valid. Also used as source for getScoresPerTrait() to link traits to their specific scores and variants info, rather than relying on the more limited topTraits from the all-scores summary.
-const TRAIT_SUMMARY_KEY = "pgs:trait-summary"; // needed in getScoresPerTrait
+const ALL_SCORE_SUMMARY_KEY = "pgs:all-score-summary"; //loadAllScores() & loadScores() uses this key to cache the full list of scores and their summary, which loadScores() can then use to source individual scores by ID without needing to fetch from network if cache is valid. Also used as source for getScoresPerTrait() / getScoresPerCategory() to link traits or categories to their specific scores and variants info, rather than relying on the more limited topTraits from the all-scores summary.
+const TRAIT_SUMMARY_KEY = "pgs:trait-summary"; // needed in getScoresPerTrait() and getScoresPerCategory()
 const SCORES_PER_TRAIT_SUMMARY_KEY = "pgs:scores-per-trait-summary"; // needed in getScoresPerTrait()
+const SCORES_PER_CATEGORY_SUMMARY_KEY = "pgs:scores-per-category-summary"; // needed in getScoresPerCategory()
 
 function formatNumber(value, decimals = 0) {
 	if (value == null || Number.isNaN(value)) return "NR";
@@ -3242,7 +3243,7 @@ async function loadScores(ids, ...moreIds) {
 	}
 }
 
-//---------------END OF TRAIT-SCORE LINKING LOGIC------------------
+//---------------START OF TRAIT-SCORE LINKING LOGIC------------------
 
 function getAssociatedPgsIdsFromTrait(trait) {
 	if (!trait || typeof trait !== "object") return [];
@@ -3284,6 +3285,27 @@ function normalizeCategoryEntries(entries) {
 		}
 		return entry;
 	});
+}
+
+function getCategoryToPgsIdsFromTraitSummary(traitSummary) {
+	const summary = traitSummary?.summary ?? traitSummary;
+	const categoryToPgsIds = new Map();
+	const categories = normalizeCategoryEntries(summary?.categories ?? summary?.topCategories);
+
+	for (const entry of categories) {
+		const categoryName = entry?.category ?? "NR";
+		if (!categoryToPgsIds.has(categoryName)) {
+			categoryToPgsIds.set(categoryName, new Set());
+		}
+		const idSet = categoryToPgsIds.get(categoryName);
+		for (const pgsId of (entry?.pgs_ids ?? [])) {
+			idSet.add(pgsId);
+		}
+	}
+
+	return [...categoryToPgsIds.entries()]
+		.map(([categoryName, idSet]) => [categoryName, [...idSet]])
+		.filter(([, ids]) => ids.length > 0);
 }
 
 function getTraitToPgsIdsFromTraitSummary(traitSummary) {
@@ -3364,6 +3386,45 @@ async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infinity } 
 	return payload;
 }
 
+async function getScoresPerCategory({ forceRefresh = false, maxCategories = Infinity } = {}) {
+	console.log("getScoresPerCategory():Loading scores per category...");
+	const cached = await getStoredScoreSummary(SCORES_PER_CATEGORY_SUMMARY_KEY);
+	if (!forceRefresh && cached?.scoresPerCategory) {
+		return cached;
+	}
+
+	const traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
+	if (!traitSummary?.summary && !traitSummary?.categories) {
+		throw new Error("Missing trait summary cache (TRAIT_SUMMARY_KEY). Run loadTraitStats() first.");
+	}
+
+	const categoryEntries = getCategoryToPgsIdsFromTraitSummary(traitSummary);
+	const scoresPerCategory = {};
+	let processedCategories = 0;
+
+	for (const [categoryName, pgsIds] of categoryEntries) {
+		if (processedCategories >= maxCategories) break;
+		const result = await loadScores(pgsIds);
+		scoresPerCategory[categoryName] = {
+			pgs_ids: pgsIds,
+			scores: result.scores,
+			summary: result.summary,
+		};
+		processedCategories += 1;
+	}
+
+	const payload = {
+		savedAt: new Date().toISOString(),
+		sourceTraitSavedAt: traitSummary?.savedAt ?? null,
+		processedCategories,
+		totalCategoryEntries: categoryEntries.length,
+		scoresPerCategory,
+	};
+
+	await localforage.setItem(SCORES_PER_CATEGORY_SUMMARY_KEY, payload);
+	return payload;
+}
+
 //---------------END OF TRAIT-SCORE LINKING LOGIC------------------
 
 // Helper to build topTraits array for plotting, using scores-per-trait summary data which links traits to their specific scores and variants info, rather than relying on the more limited topTraits from the all-scores summary.
@@ -3437,5 +3498,5 @@ async function loadScoreStats() {
 	}
 }
 
-export { fetchAllScores, fetchScores, getScoresPerTrait, loadAllScores, loadScoreStats, loadScores };
+export { fetchAllScores, fetchScores, getScoresPerCategory, getScoresPerTrait, loadAllScores, loadScoreStats, loadScores };
 //# sourceMappingURL=loadScores.bundle.mjs.map
