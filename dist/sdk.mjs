@@ -3773,6 +3773,8 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 	}
 }
 
+console.log("get-pgscatalog-scores: getPGS_loadTxts.js loaded");
+
 // load all traits (paginated) and log stats about them to console  
 const BASE$1 = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/";
 const MAX_PGS_CACHE_BYTES = 300 * 1024 * 1024;

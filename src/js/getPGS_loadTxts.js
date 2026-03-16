@@ -1,5 +1,5 @@
 import localforage from "localforage";
-
+console.log("get-pgscatalog-scores: getPGS_loadTxts.js loaded")
 
 // load all traits (paginated) and log stats about them to console  
 const BASE = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/";
