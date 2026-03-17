@@ -51,7 +51,7 @@ async function limitStorage(ids = []){
 
         entries.push({ key, id, entryBytes, createdAt });
         totalBytes += entryBytes;
-        console.log(`Cached pgs entries: ${key}, Size: ${entryBytes} bytes, Created At: ${new Date(createdAt).toISOString()}`);
+        console.log(`Cached pgs entries: ${key}, Size: ${entryBytes} bytes}`);
     });
 
     if (totalBytes < MAX_PGS_CACHE_BYTES) {
