@@ -10693,12 +10693,11 @@ async function limitStorage(ids = []){
 
         entries.push({ key, id, entryBytes, createdAt });
         totalBytes += entryBytes;
-        console.log(`Cached pgs entries: ${key}, Size: ${entryBytes} bytes}`);
+        //console.log(`Cached pgs entries: ${key}, Size: ${(entryBytes / 1024 / 1024).toFixed(2)} MB`);
     });
 
     if (totalBytes < MAX_PGS_CACHE_BYTES) {
-            console.log(`Maximum bytes allowed: ${MAX_PGS_CACHE_BYTES} bytes. Current usage: ${totalBytes} bytes. No eviction needed.`);
-        console.log(`Total bytes in cache (pgs txts): ${totalBytes} bytes. No eviction needed.`);
+        console.log(`Cache limit: ${(MAX_PGS_CACHE_BYTES / 1024 / 1024).toFixed(0)} MB. Current usage: ${(totalBytes / 1024 / 1024).toFixed(2)} MB. No eviction needed.`);
         return;
     }
 
@@ -10719,7 +10718,7 @@ async function limitStorage(ids = []){
         await localforage.removeItem(entry.key);
         totalBytes -= entry.entryBytes;
     }
-    console.log(`Total bytes after eviction: ${totalBytes} bytes`);
+    console.log(`Cache after eviction: ${(totalBytes / 1024 / 1024).toFixed(2)} MB`);
 
 }
 
