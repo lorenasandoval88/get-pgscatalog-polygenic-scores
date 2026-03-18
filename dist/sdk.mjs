@@ -10645,7 +10645,7 @@ var pako = {
 console.log("get-pgscatalog-scores: getPGS_loadTxts.js loaded");
 
 // load all traits (paginated) and log stats about them to console  
-const BASE$1 = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/";
+const getScoreUrl = (id, build = 37) => `https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/${id}/ScoringFiles/Harmonized/${id}_hmPOS_GRCh${build}.txt.gz`;
 const MAX_PGS_CACHE_BYTES = 300 * 1024 * 1024;
 const PGS_KEY_PREFIX = "pgs:id-";
 
@@ -10727,9 +10727,8 @@ async function fetchScore(id = 'PGS000050', build = 37, range) {
     let txt = "";
     const MAX_ROWS = 1000000;
 
-    // `${BASE}/PGS000004/ScoringFiles/Harmonized/PGS000004_hmPOS_GRCh37.txt.gz`
-    const url = `${BASE$1}${id}/ScoringFiles/${id}.txt.gz`; //
-    console.log("loadng unharmonized pgs score from url",url);
+    const url = getScoreUrl(id, build);
+    console.log("loading harmonized pgs score from url", url);
 
     {
         txt = pako.inflate(await (await fetch(url)).arrayBuffer(), {
