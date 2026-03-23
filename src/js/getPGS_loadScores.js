@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import { loadTraitStats } from "./getPGS_loadTraits.js";
 
 const PGS_BASE = "https://www.pgscatalog.org/rest";
 
@@ -795,7 +796,12 @@ export async function loadScoreStats({ includeAllScoreStats = false, includeTrai
 			categoryOutput.textContent = "Category-linked score stats not loaded.";
 		}
 
-		if (includeAllScoreStats) {
+		if (includeTraitStats || includeCategoryStats) {
+			// Ensure trait summary cache exists before trait/category linking
+			await loadTraitStats();
+		}
+		if (includeAllScoreStats || includeTraitStats || includeCategoryStats) {
+			// Ensure all-scores cache is populated before trait/category linking
 			results = await loadAllScores();
 		}
 		const summary = results.summary;

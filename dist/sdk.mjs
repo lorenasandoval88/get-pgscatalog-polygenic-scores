@@ -2836,14 +2836,367 @@ function requireLocalforage () {
 var localforageExports = requireLocalforage();
 var localforage = /*@__PURE__*/getDefaultExportFromCjs(localforageExports);
 
+// load all traits (paginated) and log stats about them to console  
+const BASE = "https://www.pgscatalog.org/rest";
+const TRAIT_SUMMARY_KEY$1 = "pgs:trait-summary";
+
+// ---- small helpers ----
+
+async function fetchAllTraits({ pageSize = 50, maxPages = Infinity } = {}) {
+  let offset = 0;
+  let page = 0;
+  const all = [];
+
+  while (page < maxPages) {
+    const url = `${BASE}/trait/all?format=json&limit=${pageSize}&offset=${offset}`;
+    // console.log(`traits****Requesting: ${url}`);
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status} on ${url}`);
+    const data = await r.json();
+
+    const results = Array.isArray(data) ? data : (data.results ?? []);
+    if (!Array.isArray(results)) throw new Error("Unexpected trait response shape.");
+
+    all.push(...results);
+    page += 1;
+
+    if (results.length === 0) break;
+    if (!Array.isArray(data) && data.next == null && results.length < pageSize) break;
+
+    offset += results.length;
+  }
+
+  return all;
+}
+
+// ---- run/test fetchAllTraits ----
+// (async () => {
+//   const traits = await fetchAllTraits({ pageSize: 50 });
+//   console.log("PGS Catalog trait stats:");
+//   console.log("Total traits:", traits.length);
+//   console.log("First 5 traits:", traits.slice(0, 5));
+//  // console.log(JSON.stringify(traits, null, 2));
+// })();
+
+// ---- helpers for stats ----
+
+function formatNumber$1(value, decimals = 0) {
+	if (value == null || Number.isNaN(value)) return "NR";
+	return Number(value).toLocaleString(undefined, {
+		minimumFractionDigits: decimals,
+		maximumFractionDigits: decimals,
+	});
+}
+
+async function saveTraitSummary(summary) {
+	await localforage.setItem(TRAIT_SUMMARY_KEY$1, {
+		savedAt: new Date().toISOString(),
+		summary,
+	});
+}
+
+async function getStoredTraitSummary() {
+    // console.log("checking local cache for trait summary...");
+	return localforage.getItem(TRAIT_SUMMARY_KEY$1);
+}
+
+function isCacheWithinMonths$1(savedAt, months = 3) {
+	if (!savedAt) return false;
+	const savedDate = new Date(savedAt);
+	if (Number.isNaN(savedDate.getTime())) return false;
+
+	const cutoff = new Date();
+	cutoff.setMonth(cutoff.getMonth() - months);
+
+	return savedDate >= cutoff;
+}
+
+function getCategoryEntries(summary) {
+	const entries = Array.isArray(summary?.categories)
+		? summary.categories
+		: (Array.isArray(summary?.topCategories) ? summary.topCategories : []);
+
+	return entries.map((entry) => {
+		if (Array.isArray(entry)) {
+			const pgsIds = Array.isArray(entry[2]) ? entry[2] : [];
+			return {
+				category: entry[0],
+				"traits_count": entry[1],
+				"pgs_ids": pgsIds,
+				"pgs_ids_count": pgsIds.length,
+				"traits": entry[3] ?? [],
+			};
+		}
+		if (entry && typeof entry === "object" && Array.isArray(entry["pgs_ids"])) {
+			return {
+				...entry,
+				"pgs_ids_count": entry["pgs_ids"].length,
+			};
+		}
+		return entry;
+	});
+}
+
+
+function renderStats$1(summary) { //used in loadTraitStats()
+	const statsDiv = document.getElementById("traitDiv");
+	if (!statsDiv) return;
+
+	const topCategory = getCategoryEntries(summary)[0];
+	const topCategoryLabel = topCategory
+		? `${topCategory.category} (${formatNumber$1(topCategory["traits_count"])})`
+		: "NR";
+
+	statsDiv.innerHTML = `
+		<div class="small text-muted">
+			<div><strong>Total traits:</strong> ${formatNumber$1(summary.totaltraits)}</div>
+			<div><strong>Total categories:</strong> ${formatNumber$1(summary.totalCategories)}</div>
+			<div><strong>Top category:</strong> ${topCategoryLabel}</div>
+		</div>
+	`;
+}
+
+
+function renderTraitPlot(summary) {//used in loadTraitStats()
+	//console.log("Rendering trait plot with summary:", summary);
+	if (typeof Plotly === "undefined") return;
+
+	const chartDiv = document.getElementById("traitChart");
+	if (!chartDiv) return;
+
+	const categoryEntries = getCategoryEntries(summary);
+	const categories = categoryEntries.map((entry) => entry.category);
+	const counts = categoryEntries.map((entry) => entry["traits_count"]);
+	//console.log("Category entries for plot:", summary,categoryEntries);
+	const data = [
+		{
+			type: "bar",
+			x: counts,
+			y: categories,
+			orientation: "h",
+			marker: { color: "#0d6efd" },
+		},
+	];
+
+	const layout = {
+		title: {
+			text: "Traits per Category",
+			x: 0.5,
+			xanchor: "center",
+		},
+		margin: { l: 260, r: 20, t: 80, b: 90 },
+		xaxis: {
+			title: {
+				text: "Trait count",
+				standoff: 10,
+			},
+			side: "bottom",
+			automargin: true,
+		},
+		yaxis: { automargin: true },
+	};
+
+	Plotly.newPlot(chartDiv, data, layout, { responsive: true });
+}
+
+
+// ---- main function to load trait stats, with caching ----
+
+function computeSummary$1(traits) {//used in loadTraitStats()
+	// console.log("147 Computing trait summary for traits:", traits);	
+	const byCategory = new Map();
+	const traitDataByCategory = new Map();
+	const pgsIdsByCategory = new Map();
+
+	const getAssociatedPgsIds = (trait) => {
+		if (!trait || typeof trait !== "object") return [];
+
+		if (Array.isArray(trait.associated_pgs_ids)) return trait.associated_pgs_ids;
+		if (Array.isArray(trait.pgs_ids)) return trait.pgs_ids;
+		if (Array.isArray(trait.associated_pgs)) {
+			return trait.associated_pgs
+				.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
+				.filter(Boolean);
+		}
+		if (Array.isArray(trait.scores)) {
+			return trait.scores
+				.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
+				.filter(Boolean);
+		}
+
+		return [];
+	};
+
+	for (const trait of traits) {
+		// console.log("Processing trait:", trait);
+		const categories = Array.isArray(trait?.trait_categories) && trait.trait_categories.length
+			? trait.trait_categories
+			: ["NR"];
+		const associatedPgsIds = getAssociatedPgsIds(trait);
+
+		for (const category of categories) {
+			// console.log(`Incrementing category count for: ${category}`);	
+			byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
+			if (!traitDataByCategory.has(category)) {
+				traitDataByCategory.set(category, []);
+			}
+			if (!pgsIdsByCategory.has(category)) {
+				pgsIdsByCategory.set(category, new Set());
+			}
+			const categoryPgsSet = pgsIdsByCategory.get(category);
+			for (const pgsId of associatedPgsIds) {
+				categoryPgsSet.add(pgsId);
+			}
+			traitDataByCategory.get(category).push({
+				id: trait?.id ?? trait?.efo_id ?? null,
+				// label: trait?.label ?? trait?.trait_label ?? trait?.name ?? "NR",
+				// efo_id: trait?.efo_id ?? null,
+				data: trait, // include full traits for potential drill-down use
+				// add other relevant fields as needed
+			});
+			// console.log(`Category "${category}" count is now: ${byCategory.get(category)}`);	
+		}
+	}
+
+	const categories = [...byCategory.entries()]
+		.sort((a, b) => b[1] - a[1])
+		.map(([categoryName, count]) => ({
+			category: categoryName,
+			"traits_count": count,
+			"pgs_ids": [...(pgsIdsByCategory.get(categoryName) ?? new Set())],
+			"pgs_ids_count": pgsIdsByCategory.get(categoryName)?.size ?? 0,
+			"traits": traitDataByCategory.get(categoryName) ?? [],
+		}));
+		//.slice(0, 10);
+
+	// const totalAssociatedPgsIdsPerCategory = Object.fromEntries(
+	// 	[...pgsIdsByCategory.entries()].map(([categoryName, pgsIdsSet]) => [
+	// 		categoryName,
+	// 		pgsIdsSet.size,
+	// 	])
+	// );
+
+	return {
+        traits: traits,
+		totaltraits: traits.length,
+		totalCategories: byCategory.size,
+		// totalAssociatedPgsIdsPerCategory,
+		categories,
+	};
+}
+
+
+//Plot trait statistics: check LocalForage first, use cache only when it was saved within the last 3 months, 
+// and otherwise fetch fresh data from PGS and re-cache it.
+
+async function loadTraitStats() {
+	console.log("Loading trait stats...");
+	const sourceStatus = document.getElementById("traitSourceStatus");
+	const output = document.getElementById("traitOutput");
+	const cached = await getStoredTraitSummary();
+    console.log("Cached trait summary:", cached);
+	try {
+		if (sourceStatus) sourceStatus.textContent = "Source: loading PGS score metadata...";
+
+		if (cached?.summary && isCacheWithinMonths$1(cached.savedAt, 3)) {
+			renderStats$1(cached.summary);
+			renderTraitPlot(cached.summary);
+			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage, < 3 months)";
+			if (output) {
+				output.textContent = `Loaded ${formatNumber$1(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
+			}
+			return;
+		}
+		console.log("*****Fetching traits from PGS Catalog API...");
+		const traits = await fetchAllTraits({ pageSize: 200 });
+		const summary = computeSummary$1(traits);
+		await saveTraitSummary(summary);
+        console.log('------------------------------');
+        console.log("Total traits fetched:", traits.length);
+        console.log("Fetched traits data:", traits);
+        console.log("Summary:", summary);
+		renderStats$1(summary);
+		renderTraitPlot(summary);
+
+		if (output) {
+			output.textContent = `Loaded ${formatNumber$1(summary.totaltraits)} traits from PGS Catalog.`;
+		}
+		if (sourceStatus) sourceStatus.textContent = "Source: PGS Catalog REST API (live)";
+
+        
+	} catch (error) {
+		if (cached?.summary) {
+			renderStats$1(cached.summary);
+			renderTraitPlot(cached.summary);
+			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage fallback)";
+			if (output) {
+				output.textContent = `Loaded ${formatNumber$1(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
+			}
+		} else {
+			if (sourceStatus) sourceStatus.textContent = "Source: unavailable";
+			if (output) output.textContent = `Error loading stats: ${error.message}`;
+		}
+		console.error(error);
+	}
+}
+
+
+
+async function fetchTraits() {
+	console.log("fetchTraits(), Loading fetchTraits()...");
+
+	const cached = await getStoredTraitSummary();
+	console.log("fetchTraits(), Cached trait summary:", cached);
+
+	try {
+		if (cached?.summary && isCacheWithinMonths$1(cached.savedAt, 3)) {
+			return {
+				traits: cached.summary.traits ?? [],
+				summary: cached.summary,
+				source: "cache",
+				savedAt: cached.savedAt,
+			};
+		}
+
+		console.log("*****Fetching traits from PGS Catalog API...");
+		const traits = await fetchAllTraits({ pageSize: 200 });
+		const summary = computeSummary$1(traits);
+		await saveTraitSummary(summary);
+		console.log('------------------------------');
+		console.log("Total traits fetched:", traits.length);
+		console.log("Fetched traits data:", traits);
+		console.log("Summary:", summary);
+
+		return {
+			traits,
+			summary,
+			source: "live",
+			savedAt: new Date().toISOString(),
+		};
+	} catch (error) {
+		if (cached?.summary) {
+			console.error(error);
+			return {
+				traits: cached.summary.traits ?? [],
+				summary: cached.summary,
+				source: "cache-fallback",
+				savedAt: cached.savedAt,
+				error,
+			};
+		}
+
+		throw error;
+	}
+}
+
 const PGS_BASE = "https://www.pgscatalog.org/rest";
 
 const ALL_SCORE_SUMMARY_KEY = "pgs:all-score-summary"; //loadAllScores() & loadScores() uses this key to cache the full list of scores and their summary, which loadScores() can then use to source individual scores by ID without needing to fetch from network if cache is valid. Also used as source for getScoresPerTrait() / getScoresPerCategory() to link traits or categories to their specific scores and variants info, rather than relying on the more limited topTraits from the all-scores summary.
-const TRAIT_SUMMARY_KEY$1 = "pgs:trait-summary"; // needed in getScoresPerTrait() and getScoresPerCategory()
+const TRAIT_SUMMARY_KEY = "pgs:trait-summary"; // needed in getScoresPerTrait() and getScoresPerCategory()
 const SCORES_PER_TRAIT_SUMMARY_KEY = "pgs:scores-per-trait-summary"; // needed in getScoresPerTrait()
 const SCORES_PER_CATEGORY_SUMMARY_KEY = "pgs:scores-per-category-summary"; // needed in getScoresPerCategory()
 
-function formatNumber$1(value, decimals = 0) {
+function formatNumber(value, decimals = 0) {
 	if (value == null || Number.isNaN(value)) return "NR";
 	return Number(value).toLocaleString(undefined, {
 		minimumFractionDigits: decimals,
@@ -2875,7 +3228,7 @@ async function getStoredScoreSummary(key = ALL_SCORE_SUMMARY_KEY) {
 	return localforage.getItem(key);
 }
 
-function isCacheWithinMonths$1(savedAt, months = 3) {
+function isCacheWithinMonths(savedAt, months = 3) {
 	if (!savedAt) return false;
 	const savedDate = new Date(savedAt);
 	if (Number.isNaN(savedDate.getTime())) return false;
@@ -2967,7 +3320,7 @@ async function fetchAllScores({ pageSize = 200 } = {}) {
 	return all;
 }
 
-function computeSummary$1(scores) {//Total scores fetched: 5296,Unique traits: 1,727
+function computeSummary(scores) {//Total scores fetched: 5296,Unique traits: 1,727
 	/**
 	 * Build aggregate score summary metrics and trait-level mappings.
 	 * @param {object[]} scores
@@ -3061,17 +3414,17 @@ function computeSummary$1(scores) {//Total scores fetched: 5296,Unique traits: 1
 	};
 }
 
-function renderStats$1(summary) {
+function renderStats(summary) {
 	const statsDiv = document.getElementById("scoreTraitDiv");
 	if (!statsDiv) return;
 
 	statsDiv.innerHTML = `
 		<div class="small text-muted">
-			<div><strong>Total scores:</strong> ${formatNumber$1(summary.totalScores)}</div>
-			<div><strong>Unique traits:</strong> ${formatNumber$1(summary.uniqueTraits)}</div>
-			<div><strong>Variants (median):</strong> ${formatNumber$1(summary.variants.median)}</div>
-			<div><strong>Variants (mean):</strong> ${formatNumber$1(summary.variants.mean, 2)}</div>
-			<div><strong>Variants range:</strong> ${formatNumber$1(summary.variants.min)} - ${formatNumber$1(summary.variants.max)}</div>
+			<div><strong>Total scores:</strong> ${formatNumber(summary.totalScores)}</div>
+			<div><strong>Unique traits:</strong> ${formatNumber(summary.uniqueTraits)}</div>
+			<div><strong>Variants (median):</strong> ${formatNumber(summary.variants.median)}</div>
+			<div><strong>Variants (mean):</strong> ${formatNumber(summary.variants.mean, 2)}</div>
+			<div><strong>Variants range:</strong> ${formatNumber(summary.variants.min)} - ${formatNumber(summary.variants.max)}</div>
 		</div>
 	`;
 }
@@ -3134,12 +3487,12 @@ function renderScorePerCategoryStats(topCategories) {
 
 	const topCategory = topCategories[0] ?? null;
 	const topCategoryLabel = topCategory
-		? `${topCategory[0]} (${formatNumber$1(topCategory[1])})`
+		? `${topCategory[0]} (${formatNumber(topCategory[1])})`
 		: "NR";
 
 	statsDiv.innerHTML = `
 		<div class="small text-muted">
-			<div><strong>Total categories:</strong> ${formatNumber$1(topCategories.length)}</div>
+			<div><strong>Total categories:</strong> ${formatNumber(topCategories.length)}</div>
 			<div><strong>Top category:</strong> ${topCategoryLabel}</div>
 		</div>
 	`;
@@ -3275,7 +3628,7 @@ async function loadAllScores() {
 	console.log("loadAllScores():Cached score summary:", cached);
 
 	try {
-		if (cached?.summary && isCacheWithinMonths$1(cached.savedAt, 3)) {
+		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
 			results.summary = cached.summary;
 			results.scores = cached.scores ?? [];
 	
@@ -3283,7 +3636,7 @@ async function loadAllScores() {
 		}
 
 		const scores = await fetchAllScores({ pageSize: 200 });
-		const summary = computeSummary$1(scores);
+		const summary = computeSummary(scores);
 		results.scores = scores;
 		results.summary = summary;
 		await saveScoreSummary(results, ALL_SCORE_SUMMARY_KEY);
@@ -3331,7 +3684,7 @@ async function loadScores(ids, ...moreIds) {
 	console.log("loadScores():all-score cache present:", Boolean(allScoresCached?.scores?.length));
 
 	try {
-		if (allScoresCached?.scores && isCacheWithinMonths$1(allScoresCached.savedAt, 3)) {
+		if (allScoresCached?.scores && isCacheWithinMonths(allScoresCached.savedAt, 3)) {
 			const scoreById = new Map(
 				allScoresCached.scores
 					.filter((score) => score?.id != null)
@@ -3343,7 +3696,7 @@ async function loadScores(ids, ...moreIds) {
 
 			if (scoresFromAllCache.length === requestedIds.length) {
 				results.scores = scoresFromAllCache;
-				results.summary = computeSummary$1(scoresFromAllCache);
+				results.summary = computeSummary(scoresFromAllCache);
 				return results;
 			}
 
@@ -3359,12 +3712,12 @@ async function loadScores(ids, ...moreIds) {
 			results.scores = requestedIds
 				.map((id) => scoreById.get(id) ?? fetchedById.get(id))
 				.filter(Boolean);
-			results.summary = computeSummary$1(results.scores);
+			results.summary = computeSummary(results.scores);
 			return results;
 		}
 
 		const scores = await fetchScores(requestedIds);
-		const summary = computeSummary$1(scores);
+		const summary = computeSummary(scores);
 		results.scores = scores;
 		results.summary = summary;
 		console.log("------------------------------");
@@ -3495,7 +3848,7 @@ async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infinity } 
 		return cached;
 	}
 
-	const traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY$1);
+	const traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
 	if (!traitSummary?.summary && !traitSummary?.categories) {
 		throw new Error("Missing trait summary cache (TRAIT_SUMMARY_KEY). Run loadTraitStats() first.");
 	}
@@ -3543,7 +3896,7 @@ async function getScoresPerCategory({ forceRefresh = false, maxCategories = Infi
 		return cached;
 	}
 
-	const traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY$1);
+	const traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
 	if (!traitSummary?.summary && !traitSummary?.categories) {
 		throw new Error("Missing trait summary cache (TRAIT_SUMMARY_KEY). Run loadTraitStats() first.");
 	}
@@ -3629,7 +3982,12 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			categoryOutput.textContent = "Category-linked score stats not loaded.";
 		}
 
-		if (includeAllScoreStats) {
+		if (includeTraitStats || includeCategoryStats) {
+			// Ensure trait summary cache exists before trait/category linking
+			await loadTraitStats();
+		}
+		if (includeAllScoreStats || includeTraitStats || includeCategoryStats) {
+			// Ensure all-scores cache is populated before trait/category linking
 			results = await loadAllScores();
 		}
 		const summary = results.summary;
@@ -3661,12 +4019,12 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			return results;
 		}
 
-		if (includeAllScoreStats && traitCached?.summary && isCacheWithinMonths$1(traitCached.savedAt, 3)) {
+		if (includeAllScoreStats && traitCached?.summary && isCacheWithinMonths(traitCached.savedAt, 3)) {
 			const summaryForPlot = {
 				...traitCached.summary,
 				topTraits: plotTopTraits ?? traitCached.summary.topTraits,
 			};
-			renderStats$1(traitCached.summary);
+			renderStats(traitCached.summary);
 			renderScorePlot(summaryForPlot);
 			if (traitSourceStatus) {
 				traitSourceStatus.textContent = includeTraitStats
@@ -3675,21 +4033,21 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			}
 			if (traitOutput) {
 				traitOutput.textContent = includeTraitStats
-					? `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`
-					: `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary (${traitCached.savedAt}).`;
+					? `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`
+					: `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary (${traitCached.savedAt}).`;
 			}
 		} else if (includeAllScoreStats) {
 			const summaryForPlot = {
 				...summary,
 				topTraits: plotTopTraits ?? summary.topTraits,
 			};
-			renderStats$1(summary);
+			renderStats(summary);
 			renderScorePlot(summaryForPlot);
 
 			if (traitOutput) {
 				traitOutput.textContent = includeTraitStats
-					? `Loaded ${formatNumber$1(summary.totalScores)} scores from PGS Catalog and built trait-linked score cache.`
-					: `Loaded ${formatNumber$1(summary.totalScores)} scores from PGS Catalog.`;
+					? `Loaded ${formatNumber(summary.totalScores)} scores from PGS Catalog and built trait-linked score cache.`
+					: `Loaded ${formatNumber(summary.totalScores)} scores from PGS Catalog.`;
 			}
 			if (traitSourceStatus) {
 				traitSourceStatus.textContent = includeTraitStats
@@ -3700,7 +4058,7 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			renderScorePlot({ topTraits: plotTopTraits });
 			if (traitSourceStatus) traitSourceStatus.textContent = "Source: trait-linked score cache";
 			if (traitOutput) {
-				traitOutput.textContent = `Loaded ${formatNumber$1(plotTopTraits.length)} trait-linked scoring summaries.`;
+				traitOutput.textContent = `Loaded ${formatNumber(plotTopTraits.length)} trait-linked scoring summaries.`;
 			}
 		} else if (includeTraitStats) {
 			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
@@ -3712,14 +4070,14 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			renderScorePerCategoryPlot(plotTopCategories);
 			if (categorySourceStatus) {
 				const categorySavedAt = scoresPerCategoryPayload?.savedAt;
-				if (categorySavedAt && isCacheWithinMonths$1(categorySavedAt, 3)) {
+				if (categorySavedAt && isCacheWithinMonths(categorySavedAt, 3)) {
 					categorySourceStatus.textContent = "Source: local cache (scores-per-category-summary, < 3 months)";
 				} else {
 					categorySourceStatus.textContent = "Source: category-linked score cache";
 				}
 			}
 			if (categoryOutput) {
-				categoryOutput.textContent = `Loaded ${formatNumber$1(plotTopCategories.length)} category-linked scoring summaries.`;
+				categoryOutput.textContent = `Loaded ${formatNumber(plotTopCategories.length)} category-linked scoring summaries.`;
 			}
 		} else if (includeCategoryStats) {
 			if (categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
@@ -3734,7 +4092,7 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			summary: includeAllScoreStats ? traitCached?.summary ?? null : null,
 		};
 		if (includeAllScoreStats && traitCached?.summary) {
-			renderStats$1(traitCached.summary);
+			renderStats(traitCached.summary);
 			renderScorePlot(traitCached.summary);
 			if (traitSourceStatus) {
 				traitSourceStatus.textContent = includeTraitStats
@@ -3743,8 +4101,8 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			}
 			if (traitOutput) {
 				traitOutput.textContent = includeTraitStats
-					? `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`
-					: `Loaded ${formatNumber$1(traitCached.summary.totalScores)} cached scores summary (${traitCached.savedAt}).`;
+					? `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary + trait-linked score cache (${traitCached.savedAt}).`
+					: `Loaded ${formatNumber(traitCached.summary.totalScores)} cached scores summary (${traitCached.savedAt}).`;
 			}
 		} else if (includeTraitStats) {
 			if (traitSourceStatus) traitSourceStatus.textContent = "Source: unavailable";
@@ -3761,7 +4119,7 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			renderScorePerCategoryPlot(categoryTop);
 			if (categorySourceStatus) categorySourceStatus.textContent = "Source: local cache fallback (scores-per-category-summary)";
 			if (categoryOutput) {
-				categoryOutput.textContent = `Loaded ${formatNumber$1(categoryTop.length)} cached category-linked scoring summaries (${fallbackCategoryPayload.savedAt}).`;
+				categoryOutput.textContent = `Loaded ${formatNumber(categoryTop.length)} cached category-linked scoring summaries (${fallbackCategoryPayload.savedAt}).`;
 			}
 		} else if (includeCategoryStats) {
 			if (categorySourceStatus) categorySourceStatus.textContent = "Source: unavailable";
@@ -10794,359 +11152,6 @@ async function parseScore(id, txt) {
         obj.meta[aa[0]] = aa[1];
     });
     return obj
-}
-
-// load all traits (paginated) and log stats about them to console  
-const BASE = "https://www.pgscatalog.org/rest";
-const TRAIT_SUMMARY_KEY = "pgs:trait-summary";
-
-// ---- small helpers ----
-
-async function fetchAllTraits({ pageSize = 50, maxPages = Infinity } = {}) {
-  let offset = 0;
-  let page = 0;
-  const all = [];
-
-  while (page < maxPages) {
-    const url = `${BASE}/trait/all?format=json&limit=${pageSize}&offset=${offset}`;
-    // console.log(`traits****Requesting: ${url}`);
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`HTTP ${r.status} on ${url}`);
-    const data = await r.json();
-
-    const results = Array.isArray(data) ? data : (data.results ?? []);
-    if (!Array.isArray(results)) throw new Error("Unexpected trait response shape.");
-
-    all.push(...results);
-    page += 1;
-
-    if (results.length === 0) break;
-    if (!Array.isArray(data) && data.next == null && results.length < pageSize) break;
-
-    offset += results.length;
-  }
-
-  return all;
-}
-
-// ---- run/test fetchAllTraits ----
-// (async () => {
-//   const traits = await fetchAllTraits({ pageSize: 50 });
-//   console.log("PGS Catalog trait stats:");
-//   console.log("Total traits:", traits.length);
-//   console.log("First 5 traits:", traits.slice(0, 5));
-//  // console.log(JSON.stringify(traits, null, 2));
-// })();
-
-// ---- helpers for stats ----
-
-function formatNumber(value, decimals = 0) {
-	if (value == null || Number.isNaN(value)) return "NR";
-	return Number(value).toLocaleString(undefined, {
-		minimumFractionDigits: decimals,
-		maximumFractionDigits: decimals,
-	});
-}
-
-async function saveTraitSummary(summary) {
-	await localforage.setItem(TRAIT_SUMMARY_KEY, {
-		savedAt: new Date().toISOString(),
-		summary,
-	});
-}
-
-async function getStoredTraitSummary() {
-    // console.log("checking local cache for trait summary...");
-	return localforage.getItem(TRAIT_SUMMARY_KEY);
-}
-
-function isCacheWithinMonths(savedAt, months = 3) {
-	if (!savedAt) return false;
-	const savedDate = new Date(savedAt);
-	if (Number.isNaN(savedDate.getTime())) return false;
-
-	const cutoff = new Date();
-	cutoff.setMonth(cutoff.getMonth() - months);
-
-	return savedDate >= cutoff;
-}
-
-function getCategoryEntries(summary) {
-	const entries = Array.isArray(summary?.categories)
-		? summary.categories
-		: (Array.isArray(summary?.topCategories) ? summary.topCategories : []);
-
-	return entries.map((entry) => {
-		if (Array.isArray(entry)) {
-			const pgsIds = Array.isArray(entry[2]) ? entry[2] : [];
-			return {
-				category: entry[0],
-				"traits_count": entry[1],
-				"pgs_ids": pgsIds,
-				"pgs_ids_count": pgsIds.length,
-				"traits": entry[3] ?? [],
-			};
-		}
-		if (entry && typeof entry === "object" && Array.isArray(entry["pgs_ids"])) {
-			return {
-				...entry,
-				"pgs_ids_count": entry["pgs_ids"].length,
-			};
-		}
-		return entry;
-	});
-}
-
-
-function renderStats(summary) { //used in loadTraitStats()
-	const statsDiv = document.getElementById("traitDiv");
-	if (!statsDiv) return;
-
-	const topCategory = getCategoryEntries(summary)[0];
-	const topCategoryLabel = topCategory
-		? `${topCategory.category} (${formatNumber(topCategory["traits_count"])})`
-		: "NR";
-
-	statsDiv.innerHTML = `
-		<div class="small text-muted">
-			<div><strong>Total traits:</strong> ${formatNumber(summary.totaltraits)}</div>
-			<div><strong>Total categories:</strong> ${formatNumber(summary.totalCategories)}</div>
-			<div><strong>Top category:</strong> ${topCategoryLabel}</div>
-		</div>
-	`;
-}
-
-
-function renderTraitPlot(summary) {//used in loadTraitStats()
-	//console.log("Rendering trait plot with summary:", summary);
-	if (typeof Plotly === "undefined") return;
-
-	const chartDiv = document.getElementById("traitChart");
-	if (!chartDiv) return;
-
-	const categoryEntries = getCategoryEntries(summary);
-	const categories = categoryEntries.map((entry) => entry.category);
-	const counts = categoryEntries.map((entry) => entry["traits_count"]);
-	//console.log("Category entries for plot:", summary,categoryEntries);
-	const data = [
-		{
-			type: "bar",
-			x: counts,
-			y: categories,
-			orientation: "h",
-			marker: { color: "#0d6efd" },
-		},
-	];
-
-	const layout = {
-		title: {
-			text: "Traits per Category",
-			x: 0.5,
-			xanchor: "center",
-		},
-		margin: { l: 260, r: 20, t: 80, b: 90 },
-		xaxis: {
-			title: {
-				text: "Trait count",
-				standoff: 10,
-			},
-			side: "bottom",
-			automargin: true,
-		},
-		yaxis: { automargin: true },
-	};
-
-	Plotly.newPlot(chartDiv, data, layout, { responsive: true });
-}
-
-
-// ---- main function to load trait stats, with caching ----
-
-function computeSummary(traits) {//used in loadTraitStats()
-	// console.log("147 Computing trait summary for traits:", traits);	
-	const byCategory = new Map();
-	const traitDataByCategory = new Map();
-	const pgsIdsByCategory = new Map();
-
-	const getAssociatedPgsIds = (trait) => {
-		if (!trait || typeof trait !== "object") return [];
-
-		if (Array.isArray(trait.associated_pgs_ids)) return trait.associated_pgs_ids;
-		if (Array.isArray(trait.pgs_ids)) return trait.pgs_ids;
-		if (Array.isArray(trait.associated_pgs)) {
-			return trait.associated_pgs
-				.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
-				.filter(Boolean);
-		}
-		if (Array.isArray(trait.scores)) {
-			return trait.scores
-				.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
-				.filter(Boolean);
-		}
-
-		return [];
-	};
-
-	for (const trait of traits) {
-		// console.log("Processing trait:", trait);
-		const categories = Array.isArray(trait?.trait_categories) && trait.trait_categories.length
-			? trait.trait_categories
-			: ["NR"];
-		const associatedPgsIds = getAssociatedPgsIds(trait);
-
-		for (const category of categories) {
-			// console.log(`Incrementing category count for: ${category}`);	
-			byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
-			if (!traitDataByCategory.has(category)) {
-				traitDataByCategory.set(category, []);
-			}
-			if (!pgsIdsByCategory.has(category)) {
-				pgsIdsByCategory.set(category, new Set());
-			}
-			const categoryPgsSet = pgsIdsByCategory.get(category);
-			for (const pgsId of associatedPgsIds) {
-				categoryPgsSet.add(pgsId);
-			}
-			traitDataByCategory.get(category).push({
-				id: trait?.id ?? trait?.efo_id ?? null,
-				// label: trait?.label ?? trait?.trait_label ?? trait?.name ?? "NR",
-				// efo_id: trait?.efo_id ?? null,
-				data: trait, // include full traits for potential drill-down use
-				// add other relevant fields as needed
-			});
-			// console.log(`Category "${category}" count is now: ${byCategory.get(category)}`);	
-		}
-	}
-
-	const categories = [...byCategory.entries()]
-		.sort((a, b) => b[1] - a[1])
-		.map(([categoryName, count]) => ({
-			category: categoryName,
-			"traits_count": count,
-			"pgs_ids": [...(pgsIdsByCategory.get(categoryName) ?? new Set())],
-			"pgs_ids_count": pgsIdsByCategory.get(categoryName)?.size ?? 0,
-			"traits": traitDataByCategory.get(categoryName) ?? [],
-		}));
-		//.slice(0, 10);
-
-	// const totalAssociatedPgsIdsPerCategory = Object.fromEntries(
-	// 	[...pgsIdsByCategory.entries()].map(([categoryName, pgsIdsSet]) => [
-	// 		categoryName,
-	// 		pgsIdsSet.size,
-	// 	])
-	// );
-
-	return {
-        traits: traits,
-		totaltraits: traits.length,
-		totalCategories: byCategory.size,
-		// totalAssociatedPgsIdsPerCategory,
-		categories,
-	};
-}
-
-
-//Plot trait statistics: check LocalForage first, use cache only when it was saved within the last 3 months, 
-// and otherwise fetch fresh data from PGS and re-cache it.
-
-async function loadTraitStats() {
-	console.log("Loading trait stats...");
-	const sourceStatus = document.getElementById("traitSourceStatus");
-	const output = document.getElementById("traitOutput");
-	const cached = await getStoredTraitSummary();
-    console.log("Cached trait summary:", cached);
-	try {
-		if (sourceStatus) sourceStatus.textContent = "Source: loading PGS score metadata...";
-
-		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
-			renderStats(cached.summary);
-			renderTraitPlot(cached.summary);
-			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage, < 3 months)";
-			if (output) {
-				output.textContent = `Loaded ${formatNumber(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
-			}
-			return;
-		}
-		console.log("*****Fetching traits from PGS Catalog API...");
-		const traits = await fetchAllTraits({ pageSize: 200 });
-		const summary = computeSummary(traits);
-		await saveTraitSummary(summary);
-        console.log('------------------------------');
-        console.log("Total traits fetched:", traits.length);
-        console.log("Fetched traits data:", traits);
-        console.log("Summary:", summary);
-		renderStats(summary);
-		renderTraitPlot(summary);
-
-		if (output) {
-			output.textContent = `Loaded ${formatNumber(summary.totaltraits)} traits from PGS Catalog.`;
-		}
-		if (sourceStatus) sourceStatus.textContent = "Source: PGS Catalog REST API (live)";
-
-        
-	} catch (error) {
-		if (cached?.summary) {
-			renderStats(cached.summary);
-			renderTraitPlot(cached.summary);
-			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage fallback)";
-			if (output) {
-				output.textContent = `Loaded ${formatNumber(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
-			}
-		} else {
-			if (sourceStatus) sourceStatus.textContent = "Source: unavailable";
-			if (output) output.textContent = `Error loading stats: ${error.message}`;
-		}
-		console.error(error);
-	}
-}
-
-
-
-async function fetchTraits() {
-	console.log("fetchTraits(), Loading fetchTraits()...");
-
-	const cached = await getStoredTraitSummary();
-	console.log("fetchTraits(), Cached trait summary:", cached);
-
-	try {
-		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
-			return {
-				traits: cached.summary.traits ?? [],
-				summary: cached.summary,
-				source: "cache",
-				savedAt: cached.savedAt,
-			};
-		}
-
-		console.log("*****Fetching traits from PGS Catalog API...");
-		const traits = await fetchAllTraits({ pageSize: 200 });
-		const summary = computeSummary(traits);
-		await saveTraitSummary(summary);
-		console.log('------------------------------');
-		console.log("Total traits fetched:", traits.length);
-		console.log("Fetched traits data:", traits);
-		console.log("Summary:", summary);
-
-		return {
-			traits,
-			summary,
-			source: "live",
-			savedAt: new Date().toISOString(),
-		};
-	} catch (error) {
-		if (cached?.summary) {
-			console.error(error);
-			return {
-				traits: cached.summary.traits ?? [],
-				summary: cached.summary,
-				source: "cache-fallback",
-				savedAt: cached.savedAt,
-				error,
-			};
-		}
-
-		throw error;
-	}
 }
 
 export { fetchScores, fetchTraits, getScoresPerCategory, getScoresPerTrait, getTxts, loadAllScores, loadScoreStats, loadScores, loadTraitStats, localforage };
