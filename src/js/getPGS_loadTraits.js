@@ -8,13 +8,15 @@ const TRAIT_SUMMARY_KEY = "pgs:trait-summary";
 
 // ---- small helpers ----
 
-async function fetchAllTraits({ pageSize = 50, maxPages = Infinity } = {}) {
+export async function rawTraitArrayFromAPI({ pageSize = 50, maxPages = Infinity } = {}) {
   let offset = 0;
   let page = 0;
   const all = [];
-
   while (page < maxPages) {
+	console.log("rawTraitArrayFromAPI(), Fetching traits with pageSize:", pageSize, "maxPages:", maxPages);
+
     const url = `${BASE}/trait/all?format=json&limit=${pageSize}&offset=${offset}`;
+	console.log("rawTraitArrayFromAPI(), Requesting traits from URL:", url);
     // console.log(`traits****Requesting: ${url}`);
     const r = await fetch(url);
     if (!r.ok) throw new Error(`HTTP ${r.status} on ${url}`);
@@ -31,7 +33,7 @@ async function fetchAllTraits({ pageSize = 50, maxPages = Infinity } = {}) {
 
     offset += results.length;
   }
-
+console.log(`rawTraitArrayFromAPI(), Completed fetching traits. Total fetched: ${all.length}, all:`, all);
   return all;
 }
 
@@ -55,10 +57,10 @@ function formatNumber(value, decimals = 0) {
 }
 
 async function saveTraitSummary(summary) {
-	await localforage.setItem(TRAIT_SUMMARY_KEY, {
-		savedAt: new Date().toISOString(),
-		summary,
-	});
+	await localforage.setItem(TRAIT_SUMMARY_KEY, 
+		//savedAt: new Date().toISOString(),
+		summary
+	);
 }
 
 async function getStoredTraitSummary() {
@@ -115,8 +117,8 @@ function renderStats(summary) { //used in loadTraitStats()
 
 	statsDiv.innerHTML = `
 		<div class="small text-muted">
-			<div><strong>Total traits:</strong> ${formatNumber(summary.totaltraits)}</div>
-			<div><strong>Total categories:</strong> ${formatNumber(summary.totalCategories)}</div>
+			<div><strong>Total traits:</strong> ${formatNumber(summary.traits.length)}</div>
+			<div><strong>Total categories:</strong> ${formatNumber(summary.categories.length)}</div>
 			<div><strong>Top category:</strong> ${topCategoryLabel}</div>
 		</div>
 	`;
@@ -169,7 +171,8 @@ function renderTraitPlot(summary) {//used in loadTraitStats()
 // ---- main function to load trait stats, with caching ----
 
 function computeSummary(traits) {//used in loadTraitStats()
-	// console.log("147 Computing trait summary for traits:", traits);	
+	//const traits = await rawTraitArrayFromAPI({ pageSize: 200 });
+	console.log(" computeSummary(traits), Computing trait summary for traits:", traits.length);	
 	const byCategory = new Map();
 	const traitDataByCategory = new Map();
 	const pgsIdsByCategory = new Map();
@@ -179,6 +182,7 @@ function computeSummary(traits) {//used in loadTraitStats()
 
 		if (Array.isArray(trait.associated_pgs_ids)) return trait.associated_pgs_ids;
 		if (Array.isArray(trait.pgs_ids)) return trait.pgs_ids;
+
 		if (Array.isArray(trait.associated_pgs)) {
 			return trait.associated_pgs
 				.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
@@ -199,9 +203,9 @@ function computeSummary(traits) {//used in loadTraitStats()
 			? trait.trait_categories
 			: ["NR"];
 		const associatedPgsIds = getAssociatedPgsIds(trait);
-
+		// console.log(`Trait "${trait?.label ?? trait?.name ?? trait?.id}" categories:`, categories, "associated PGS IDs:", associatedPgsIds);
 		for (const category of categories) {
-			// console.log(`Incrementing category count for: ${category}`);	
+			//console.log(`Incrementing category count for: ${category}`);	
 			byCategory.set(category, (byCategory.get(category) ?? 0) + 1);
 			if (!traitDataByCategory.has(category)) {
 				traitDataByCategory.set(category, []);
@@ -220,7 +224,7 @@ function computeSummary(traits) {//used in loadTraitStats()
 				data: trait, // include full traits for potential drill-down use
 				// add other relevant fields as needed
 			});
-			// console.log(`Category "${category}" count is now: ${byCategory.get(category)}`);	
+			//console.log(`Category "${category}" count is now: ${byCategory.get(category)}`);	
 		}
 	}
 
@@ -244,8 +248,8 @@ function computeSummary(traits) {//used in loadTraitStats()
 
 	return {
         traits: traits,
-		totaltraits: traits.length,
-		totalCategories: byCategory.size,
+		// totaltraits: traits.length,
+		// totalCategories: byCategory.size,
 		// totalAssociatedPgsIdsPerCategory,
 		categories,
 	};
@@ -256,11 +260,11 @@ function computeSummary(traits) {//used in loadTraitStats()
 // and otherwise fetch fresh data from PGS and re-cache it.
 
 export async function loadTraitStats() {
-	console.log("Loading trait stats...");
+	console.log("loadTraitStats()");
 	const sourceStatus = document.getElementById("traitSourceStatus");
 	const output = document.getElementById("traitOutput");
 	const cached = await getStoredTraitSummary();
-    console.log("Cached trait summary:", cached);
+	console.log("Cached trait summary:", cached);
 	try {
 		if (sourceStatus) sourceStatus.textContent = "Source: loading PGS score metadata...";
 
@@ -269,23 +273,22 @@ export async function loadTraitStats() {
 			renderTraitPlot(cached.summary);
 			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage, < 3 months)";
 			if (output) {
-				output.textContent = `Loaded ${formatNumber(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
+				output.textContent = `Loaded ${formatNumber(cached.summary.traits.length)} cached traits summary (${cached.savedAt}).`;
 			}
 			return cached.summary;
 		}
 		console.log("*****Fetching traits from PGS Catalog API...");
-		const traits = await fetchAllTraits({ pageSize: 200 });
-		const summary = computeSummary(traits);
-		await saveTraitSummary(summary);
-        console.log('------------------------------')
-        console.log("Total traits fetched:", traits.length);
-        console.log("Fetched traits data:", traits);
-        console.log("Summary:", summary);
+
+		const results = await fetchTraits();
+		const summary = results.summary;
+		console.log('------------------------------');
+		console.log("Total traits fetched:,summary, results:",summary, results);
+
 		renderStats(summary);
 		renderTraitPlot(summary);
 
 		if (output) {
-			output.textContent = `Loaded ${formatNumber(summary.totaltraits)} traits from PGS Catalog.`;
+			output.textContent = `Loaded ${formatNumber(summary.traits.length)} traits from PGS Catalog.`;
 		}
 		if (sourceStatus) sourceStatus.textContent = "Source: PGS Catalog REST API (live)";
 
@@ -296,7 +299,7 @@ export async function loadTraitStats() {
 			renderTraitPlot(cached.summary);
 			if (sourceStatus) sourceStatus.textContent = "Source: local cache (LocalForage fallback)";
 			if (output) {
-				output.textContent = `Loaded ${formatNumber(cached.summary.totaltraits)} cached traits summary (${cached.savedAt}).`;
+				output.textContent = `Loaded ${formatNumber(cached.summary.traits.length)} cached traits summary (${cached.savedAt}).`;
 			}
 			return cached.summary;
 		} else {
@@ -309,43 +312,39 @@ export async function loadTraitStats() {
 }
 
 
-
 export async function fetchTraits() {
 	console.log("fetchTraits(), Loading fetchTraits()...");
 
 	const cached = await getStoredTraitSummary();
-	console.log("fetchTraits(), Cached trait summary:", cached);
+	console.log("fetchTraits(), Cached trait data available???", cached);
 
 	try {
 		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
 			return {
-				traits: cached.summary.traits ?? [],
 				summary: cached.summary,
 				source: "cache",
 				savedAt: cached.savedAt,
 			};
 		}
 
-		console.log("*****Fetching traits from PGS Catalog API...");
-		const traits = await fetchAllTraits({ pageSize: 200 });
-		const summary = computeSummary(traits);
-		await saveTraitSummary(summary);
+		const traits = await rawTraitArrayFromAPI({ pageSize: 200 });
+		console.log("###############fetchTraits(), Raw traits fetched:", traits.length, traits);
+		const summary = await computeSummary(traits);
 		console.log('------------------------------');
 		console.log("Total traits fetched:", traits.length);
-		console.log("Fetched traits data:", traits);
 		console.log("Summary:", summary);
 
-		return {
-			traits,
-			summary,
+		const res = {
+			summary: summary,
 			source: "live",
 			savedAt: new Date().toISOString(),
 		};
+		await saveTraitSummary(res);
+		return res;
 	} catch (error) {
 		if (cached?.summary) {
 			console.error(error);
 			return {
-				traits: cached.summary.traits ?? [],
 				summary: cached.summary,
 				source: "cache-fallback",
 				savedAt: cached.savedAt,
@@ -355,4 +354,11 @@ export async function fetchTraits() {
 
 		throw error;
 	}
+}
+
+// Expose for dev console
+if (typeof window !== "undefined") {
+	window.rawTraitArrayFromAPI = rawTraitArrayFromAPI;
+	window.fetchTraits = fetchTraits;
+	window.loadTraitStats = loadTraitStats;
 }
