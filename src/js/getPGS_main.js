@@ -1,13 +1,12 @@
 
 
 import localforage from "localforage";
-import { loadTraitStats } from "./getPGS_loadTraits.js";
-import { loadScoreStats } from "./getPGS_loadScores.js";
+import { fetchDataAndRenderPlots, loadScoreStats } from "./landingPage.js";
 
 export async function initStats() {
   try {
     await Promise.allSettled([
-      loadTraitStats(),
+      fetchDataAndRenderPlots(),
       loadScoreStats({ includeAllScoreStats: true, includeTraitStats: true, includeCategoryStats: true })
     ]);
   } catch (err) {
@@ -18,7 +17,7 @@ export async function initStats() {
 if (typeof window !== "undefined") {
   window.localforage = localforage;
   window.initStats = initStats;
-  window.loadTraitStats = loadTraitStats;
+  window.fetchDataAndRenderPlots = fetchDataAndRenderPlots;
   window.loadScoreStats = loadScoreStats;
 }
 

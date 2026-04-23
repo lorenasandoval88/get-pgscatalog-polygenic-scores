@@ -23,7 +23,7 @@ You can test the SDK directly in your browser console.
 ```javascript
 const sdk = await import("https://lorenasandoval88.github.io/pgs_catalog_sdk/dist/sdk.mjs");
 
-const data = await sdk.loadAllScores();
+const data = await sdk.fetchAllScores();
 
 console.log(data);
 ```
@@ -65,7 +65,7 @@ Open `index.html` with a local static server (for example VS Code Live Server).
 Public exports from `sdk.js`:
 
 - `localforage`
-- `loadAllScores`
+- `fetchAllScores`
 - `loadScores`
 - `fetchScores`
 - `loadScoreStats`

@@ -5,7 +5,7 @@ import pako from "pako";
 // load all traits (paginated) and log stats about them to console  
 const getScoreUrl = (id, build = 37) => `https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/${id}/ScoringFiles/Harmonized/${id}_hmPOS_GRCh${build}.txt.gz`;
 const MAX_PGS_CACHE_BYTES = 300 * 1024 * 1024;
-const PGS_KEY_PREFIX = "pgs:id-";
+const PGS_KEY_PREFIX = "PGS_Catalog:id-";
 
 
 
@@ -36,7 +36,7 @@ async function getTxts(ids) {
 }
 
 
-// evicts in this order:First: cached pgs:id-* entries whose IDs are not in current ids.
+// evicts in this order:First: cached PGS_Catalog:id-* entries whose IDs are not in current ids.
 // Then (only if still over limit): entries whose IDs are in current ids.
 async function limitStorage(ids = []){
     const entries = [];

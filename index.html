@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>get-pgscatalog-scores Demo</title>
+    <title>pgs_catalog_sdk Demo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet" />
@@ -22,7 +22,7 @@
     <!-- NAVBAR -->
     <nav id="mainNav" class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="#">get-pgscatalog-scores</a>
+            <a class="navbar-brand fw-bold" href="#">pgs_catalog_sdk</a>
 
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
                 <span class="navbar-toggler-icon"></span>
@@ -32,11 +32,11 @@
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item"><a class="nav-link active" href="#">Tools</a></li>
                     <li class="nav-item">
-                        <a class="nav-link" href="https://github.com/lorenasandoval88/get-pgscatalog-scores"
+                        <a class="nav-link" href="https://github.com/lorenasandoval88/pgs_catalog_sdk"
                             target="_blank">Code</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="https://github.com/lorenasandoval88/get-pgscatalog-scores/wiki"
+                        <a class="nav-link" href="https://github.com/lorenasandoval88/pgs_catalog_sdk/wiki"
                             target="_blank">Docs</a>
                     </li>
                 </ul>
@@ -62,8 +62,8 @@
                 <h1 class="mb-3">Try it out in the console:</h1>
 
                 <pre class="bg-light border rounded p-3"><code>try {
-                const pgs_catalog_sdk = await import("https://lorenasandoval88.github.io/get-pgscatalog-scores/dist/sdk.mjs");
-                let categories = await  pgs_catalog_sdk.getScoresPerCategory();
+                const sdk = await import("https://lorenasandoval88.github.io/pgs_catalog_sdk/dist/sdk.mjs");
+                let categories = await  sdk.getScoresPerCategory();
                 console.log("PGS categories loaded and cached in local storage:", categories);
                 } catch (error) {
                     console.error("Failed to load categories:", error);
