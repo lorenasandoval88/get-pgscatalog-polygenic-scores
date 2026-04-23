@@ -548,19 +548,18 @@ export async function loadAllScores() {
 
 	try {
 		if (cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
-			//results.summary = cached.summary;
+			results.summary = cached.summary;
 			results.scores = cached.scores ?? [];
 	
 			return results;
 		}
 
 		const scores = await fetchAllScores({ pageSize: 200 });
-				console.log("Total scores fetched:", scores.length, scores);
+		console.log("Total scores fetched:", scores.length, scores);
 
-		//const summary = computeSummary(scores);
-		// results.scores = scores;
-		//results.summary = summary;
-		results = scores;
+		const summary = computeSummary(scores);
+		results.scores = scores;
+		results.summary = summary;
 		await saveScoreSummary(results, ALL_SCORE_SUMMARY_KEY);
 
 		// console.log("------------------------------");
@@ -568,15 +567,11 @@ export async function loadAllScores() {
 		// console.log("Summary:", summary);
 
 		return results;
-	// } catch (error) {
-	// 	if (cached?.summary) {
-	// 		results.summary = cached.summary;
-	// 		results.scores = cached.scores ?? [];
-	// 	} 
-		} catch (error) {
-		if (cached) {
-			results = cached;
-		} 
+	} catch (error) {
+		if (cached?.summary) {
+			results.summary = cached.summary;
+			results.scores = cached.scores ?? [];
+		}
 		console.error(error);
 		return results;
 	}
