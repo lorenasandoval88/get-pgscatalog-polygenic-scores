@@ -3690,11 +3690,11 @@ async function getScoresPerCategory2({ forceRefresh = false } = {}) {
 // Expose for dev console
 if (typeof window !== "undefined") {
 	window.fetchSomeScores = fetchSomeScores;
-	window.fetchSomeAPIScores = fetchSomeAPIScores;
+	//window.fetchSomeAPIScores = fetchSomeAPIScores;
 	window.fetchAllScores = fetchAllScores;
 	window.getScoresPerTrait = getScoresPerTrait;
 	window.getScoresPerCategory = getScoresPerCategory;
-	window.getScoresPerCategory2 = getScoresPerCategory2;
+	//window.getScoresPerCategory2 = getScoresPerCategory2;
 }
 
 export { buildTopCategoriesFromScoresPerCategory, buildTopTraitsFromScoresPerTrait, fetchAllApiScores, fetchAllScores, fetchSomeAPIScores, fetchSomeScores, getScoresPerCategory, getScoresPerCategory2, getScoresPerTrait };

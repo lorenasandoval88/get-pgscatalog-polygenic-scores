@@ -17,21 +17,30 @@ function getByteSize(value) {
     return encoded.length * 2;
 }
 
-async function getTxts(ids) {
+async function getTxts(ids, _unused, cache = true) {
     // console.log("getTxts()", ids)
     let data = await Promise.all(ids.map(async (id, i) => {
-        let score = await localforage.getItem(`${PGS_KEY_PREFIX}${id}`)
-        // console.log(`Cache lookup for ${PGS_KEY_PREFIX}${id}:`, score ? "HIT" : "MISS")
+        let score = null
+
+        if (cache) {
+            score = await localforage.getItem(`${PGS_KEY_PREFIX}${id}`)
+            // console.log(`Cache lookup for ${PGS_KEY_PREFIX}${id}:`, score ? "HIT" : "MISS")
+        }
+
         if (score == null) {
             // console.log(`Cache miss for ${id}. Fetching from network...`)
             score = await parseScore(id, await fetchScore(id))
-            score.cachedAt = Date.now()
-            await localforage.setItem(`${PGS_KEY_PREFIX}${id}`, score);
+            if (cache) {
+                score.cachedAt = Date.now()
+                await localforage.setItem(`${PGS_KEY_PREFIX}${id}`, score);
+            }
         }
         return score
     })
     )
-    await limitStorage(ids);
+    if (cache) {
+        await limitStorage(ids);
+    }
     return data
 }
 

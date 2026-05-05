@@ -3002,106 +3002,6 @@ function computeSummary$1(scores) {//Total scores fetched: 5296,Unique traits: 1
 		releaseYears,
 	};
 }
-function computeSummary2(scores) {
-	/**
-	 * Build aggregate score summary metrics and trait-level mappings.
-	 * Includes traitToPgsData for full score objects keyed by PGS ID.
-	 * @param {object[]} scores
-	 * @returns {{
-	 *   totalScores: number,
-	 *   uniqueTraits: number,
-	 *   variants: {min: number|null, max: number|null, mean: number|null, median: number|null},
-	 *   top10Traits: Array,
-	 *   pgs_ids: Object,
-	 *   traitToPgsData: Object,
-	 *   traitVariantRange: Object,
-	 *   releaseYears: Array
-	 * }}
-	 */
-	//console.log("computeSummary2(): Computing summary for scores...");
-	const byTrait = new Map();
-	const byTraitPgsIds = new Map();
-	const byTraitPgsData = new Map();
-	const byTraitVariants = new Map();
-	const byReleaseYear = new Map();
-
-	scores
-		.map((item) => Number(item.variants_number))
-		.filter((v) => Number.isFinite(v))
-		.sort((a, b) => a - b);
-
-	for (const score of scores) {
-		const trait = score.trait_reported ?? "NR";
-		const scoreVariants = Number(score?.variants_number);
-		const scoreId = score?.id;
-
-		// Count scores per trait
-		byTrait.set(trait, (byTrait.get(trait) ?? 0) + 1);
-
-		// Track PGS IDs and full score data per trait
-		if (scoreId != null && scoreId !== "") {
-			if (!byTraitPgsIds.has(trait)) {
-				byTraitPgsIds.set(trait, new Set());
-			}
-			byTraitPgsIds.get(trait).add(String(scoreId));
-
-			if (!byTraitPgsData.has(trait)) {
-				byTraitPgsData.set(trait, {});
-			}
-			byTraitPgsData.get(trait)[String(scoreId)] = score;
-		}
-
-		// Track variant ranges per trait
-		if (Number.isFinite(scoreVariants)) {
-			if (!byTraitVariants.has(trait)) {
-				byTraitVariants.set(trait, {
-					min: scoreVariants,
-					max: scoreVariants,
-				});
-			} else {
-				const current = byTraitVariants.get(trait);
-				current.min = Math.min(current.min, scoreVariants);
-				current.max = Math.max(current.max, scoreVariants);
-			}
-		}
-
-		// Track release years
-		const yearMatch = (score.date_release ?? "").match(/^(\d{4})/);
-		if (yearMatch) {
-			const y = yearMatch[1];
-			byReleaseYear.set(y, (byReleaseYear.get(y) ?? 0) + 1);
-		}
-	}
-
-	// Sort traits by score count (descending)
-	const sortedTraitEntries = [...byTrait.entries()].sort((a, b) => b[1] - a[1]);
-
-	Object.fromEntries(
-		sortedTraitEntries.map(([trait]) => [
-			trait,
-			[...(byTraitPgsIds.get(trait) ?? new Set())]
-		])
-	);
-
-	const traitToPgsData = Object.fromEntries(
-		sortedTraitEntries.map(([trait]) => [
-			trait,
-			byTraitPgsData.get(trait) ?? {}
-		])
-	);
-
-	[...byReleaseYear.entries()]
-		.sort((a, b) => Number(a[0]) - Number(b[0]));
-
-	Object.fromEntries(
-		[...byTraitVariants.entries()].map(([trait, range]) => [
-			trait,
-			{ min: range.min, max: range.max },
-		])
-	);
-
-	return traitToPgsData
-}
 
 
 function getVariantsRangeFromScores(scores = []) {
@@ -3635,66 +3535,16 @@ async function getScoresPerCategory({ forceRefresh = false, maxCategories = Infi
 	await localforage.setItem(SCORES_PER_CATEGORY_SUMMARY_KEY, payload);
 	return payload;
 }
-async function getScoresPerCategory2({ forceRefresh = false } = {}) {
-	/**
-	 * Build and cache category -> scores mapping using trait-summary-linked PGS IDs.
-	 * Optimized: loads all scores once and builds a Map lookup instead of calling fetchSomeScores() per category.
-	 * @param {{ forceRefresh?: boolean }} [options]
-	 * @returns {Promise<object>}
-	 */
-	// console.log("getScoresPerCategory2():Loading scores per category...");
-	const cached = await getStoredScoreSummary("SCORES_PER_CATEGORY_SUMMARY_KEY_2");
-	if (!forceRefresh && cached?.categories) {
-		return cached;
-	}
-
-	const traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY$1);
-	if (!traitSummary?.summary && !traitSummary?.categories) {
-		throw new Error("Missing trait summary cache (TRAIT_SUMMARY_KEY). Call fetchTraits() first, or run fetchDataAndRenderPlots() to fetch and render trait data.");
-	}
-
-	// Load all scores once and build a Map for fast lookup
-	const { scores: allScores } = await fetchAllScores();
-	const scoreById = new Map(
-		allScores
-			.filter((score) => score?.id != null)
-			.map((score) => [String(score.id), score])
-	);
-
-	const categoryEntries = getCategoryToPgsIdsFromTraitSummary(traitSummary);
-	const categories = {};
-
-	for (const [categoryName, pgsIds] of categoryEntries) {
-		// console.log(`Building getcategories for category: "${categoryName}" with ${pgsIds.length} associated PGS IDs...`);
-		const categoryScores = pgsIds.map((id) => scoreById.get(String(id))).filter(Boolean);
-		categories[categoryName] = {
-			pgs_ids: pgsIds,
-			totalScores: pgsIds.length,
-			//scores: categoryScores,
-			traits: computeSummary2(categoryScores),
-		};
-	}
-
-	const payload = {
-		savedAt: new Date().toISOString(),
-		sourceTraitSavedAt: traitSummary?.savedAt ?? null,
-		totalCategoryEntries: categoryEntries.length,
-		categories,
-	};
-
-	await localforage.setItem("SCORES_PER_CATEGORY_SUMMARY_KEY_2", payload);
-	return payload;
-}
 //---------------END OF CATEGORY-SCORE LINKING LOGIC------------------
 
 // Expose for dev console
 if (typeof window !== "undefined") {
 	window.fetchSomeScores = fetchSomeScores;
-	window.fetchSomeAPIScores = fetchSomeAPIScores;
+	//window.fetchSomeAPIScores = fetchSomeAPIScores;
 	window.fetchAllScores = fetchAllScores;
 	window.getScoresPerTrait = getScoresPerTrait;
 	window.getScoresPerCategory = getScoresPerCategory;
-	window.getScoresPerCategory2 = getScoresPerCategory2;
+	//window.getScoresPerCategory2 = getScoresPerCategory2;
 }
 
 // load all traits (paginated) and log stats about them to console  
@@ -11269,21 +11119,30 @@ function getByteSize(value) {
     return encoded.length * 2;
 }
 
-async function getTxts(ids) {
+async function getTxts(ids, _unused, cache = true) {
     // console.log("getTxts()", ids)
     let data = await Promise.all(ids.map(async (id, i) => {
-        let score = await localforage.getItem(`${PGS_KEY_PREFIX}${id}`);
-        // console.log(`Cache lookup for ${PGS_KEY_PREFIX}${id}:`, score ? "HIT" : "MISS")
+        let score = null;
+
+        if (cache) {
+            score = await localforage.getItem(`${PGS_KEY_PREFIX}${id}`);
+            // console.log(`Cache lookup for ${PGS_KEY_PREFIX}${id}:`, score ? "HIT" : "MISS")
+        }
+
         if (score == null) {
             // console.log(`Cache miss for ${id}. Fetching from network...`)
             score = await parseScore(id, await fetchScore(id));
-            score.cachedAt = Date.now();
-            await localforage.setItem(`${PGS_KEY_PREFIX}${id}`, score);
+            if (cache) {
+                score.cachedAt = Date.now();
+                await localforage.setItem(`${PGS_KEY_PREFIX}${id}`, score);
+            }
         }
         return score
     })
     );
-    await limitStorage(ids);
+    if (cache) {
+        await limitStorage(ids);
+    }
     return data
 }
 

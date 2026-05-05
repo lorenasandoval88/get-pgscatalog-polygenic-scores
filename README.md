@@ -72,3 +72,17 @@ Public exports from `sdk.js`:
 - `getTxts`
 - `fetchTraits`
 
+### getTxts
+
+`getTxts(ids, optionalArg, cache = true)`
+
+- `cache` defaults to `true` (current behavior).
+- Set `cache` to `false` to skip both cache reads and cache writes for that call.
+
+Examples:
+
+```javascript
+await sdk.getTxts(ids); // default: uses cache
+await sdk.getTxts(ids, undefined, false); // bypass cache for this call
+```
+
