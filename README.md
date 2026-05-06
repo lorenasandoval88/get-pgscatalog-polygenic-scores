@@ -100,7 +100,7 @@ A separate, Node-safe bundle (`cloud_sdk.mjs`, **4.4 KB**) for Cloud Run and ser
 ### Installation
 
 ```bash
-npm install get-pgscatalog-scores
+npm install pgs_catalog_sdk
 ```
 
 ### Cloud SDK Exports
@@ -118,7 +118,7 @@ import {
   fetchAvailableDataTypes,
   load23andMeFile,
   parse23Txt,
-} from "get-pgscatalog-scores/cloud_sdk.mjs";
+} from "pgs_catalog_sdk/cloud_sdk.mjs";
 
 // Fetch available data types
 const types = await fetchAvailableDataTypes();
