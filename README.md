@@ -92,8 +92,8 @@ await sdk.getTxts(ids, undefined, false); // bypass cache for this call
 A separate, Node-safe bundle (`cloud_sdk.mjs`, **4.4 KB**) for Cloud Run and server deployment.
 
 ### Features
-- Pure ingestion functions with **zero browser dependencies** (no window, document, localforage, plotly)
-- Multi-proxy fallback for network resilience
+- Exposes core PGS SDK loaders for Node/Cloud environments
+- No browser UI dependencies in the cloud entry surface
 - Lean bundle size optimized for containerized environments
 - Ready for Google Cloud Run, AWS Lambda, or any Node.js host
 
@@ -105,35 +105,37 @@ npm install pgs_catalog_sdk
 
 ### Cloud SDK Exports
 
-- `fetchAvailableDataTypes()` – List available PGS data types
-- `allUsersMetaDataByType_fast(dataType)` – Fetch metadata by type with caching
-- `fetchProfile(id, type)` – Fetch individual profile by ID
-- `load23andMeFile(fileContent)` – Parse 23andMe format file
-- `parse23Txt(txtData)` – Parse 23andMe text data
+- `fetchAllScores()`
+- `fetchSomeScores(ids)`
+- `loadScoreStats()`
+- `getScoresPerTrait()`
+- `getScoresPerCategory()`
+- `getTxts(ids, optionalArg, cache = true)`
+- `fetchTraits()`
 
 ### Cloud SDK Usage
 
 ```javascript
 import {
-  fetchAvailableDataTypes,
-  load23andMeFile,
-  parse23Txt,
+  fetchAllScores,
+  fetchSomeScores,
+  fetchTraits,
+  getScoresPerTrait,
+  getScoresPerCategory,
+  getTxts,
+  loadScoreStats,
 } from "pgs_catalog_sdk/cloud_sdk.mjs";
 
-// Fetch available data types
-const types = await fetchAvailableDataTypes();
-console.log(types); // [{ id: 'PGS000001', ... }, ...]
+const scores = await fetchSomeScores(["PGS000001", "PGS000050"]);
+console.log(scores.length);
 
-// Parse 23andMe file
-const data = await load23andMeFile(Buffer.from(fileString));
-console.log(data.variantCount); // Number of variants parsed
+const traits = await fetchTraits();
+console.log(traits?.length ?? 0);
 ```
 
 ### Build Details
 
-- **Source:** `src/js/pgs_node.js` (477 lines, pure data functions)
-- **Entry:** `cloudNodeEntry.js` (prevents Rollup from traversing browser dependencies)
+- **Source:** `src/js/getPGS_loadScores.js`, `src/js/getPGS_loadTxts.js`, `src/js/getPGS_loadTraits.js`, `src/js/landingPage.js`
+- **Entry:** `cloudNodeEntry.js` (exports the cloud-safe SDK surface)
 - **Build:** `npm run build` generates both `dist/sdk.mjs` (browser) and `dist/cloud_sdk.mjs` (Node)
 - **Critical Fix:** Rollup `intro` shim `var self = globalThis;` prevents jszip runtime crash from bundled `self` reference
-
-=======
