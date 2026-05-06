@@ -8,6 +8,9 @@
   "exports": {
     ".": {
       "import": "./dist/sdk.mjs"
+    },
+    "./cloud_sdk.mjs": {
+      "import": "./dist/cloud_sdk.mjs"
     }
   },
   "files": [

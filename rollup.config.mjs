@@ -1,7 +1,7 @@
 import resolve from "@rollup/plugin-node-resolve";
 import commonjs from "@rollup/plugin-commonjs";
 
-const plugins = [
+const browserPlugins = [
     resolve({
         browser: true,
         preferBuiltins: false,
@@ -9,15 +9,24 @@ const plugins = [
     commonjs(),
 ];
 
+const nodePlugins = [
+    resolve({
+        browser: false,
+        preferBuiltins: true,
+    }),
+    commonjs(),
+];
 
-export default [{
-    input: "src/js/getPGS_loadScores.js",
+
+export default [
+    {
+        input: "src/js/getPGS_loadScores.js",
         output: {
             file: "dist/loadScores.bundle.mjs",
             format: "es",
             sourcemap: true,
         },
-        plugins,
+        plugins: browserPlugins,
     },
     {
         input: "src/js/getPGS_loadTraits.js",
@@ -26,7 +35,7 @@ export default [{
             format: "es",
             sourcemap: true,
         },
-        plugins
+        plugins: browserPlugins,
     },
     {
         input: "src/js/getPGS_main.js",
@@ -35,7 +44,7 @@ export default [{
             format: "es",
             sourcemap: true,
         },
-        plugins,
+        plugins: browserPlugins,
     },
     {
         input: "sdk.js",
@@ -44,6 +53,16 @@ export default [{
             format: "es",
             sourcemap: true,
         },
-        plugins,
+        plugins: browserPlugins,
+    },
+    {
+        input: "cloudNodeEntry.js",
+        output: {
+            file: "dist/cloud_sdk.mjs",
+            format: "es",
+            sourcemap: true,
+            intro: "var self = globalThis;", // Shim for jszip's unguarded self reference
+        },
+        plugins: nodePlugins,
     },
 ];
