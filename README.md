@@ -133,6 +133,23 @@ const traits = await fetchTraits();
 console.log(traits?.length ?? 0);
 ```
 
+### Reliability: retry and throttling
+
+The cloud SDK applies a retry + backoff strategy to all PGS Catalog API requests
+to absorb transient `429` / `5xx` errors and avoid hammering the upstream service:
+
+- **Retries:** up to 5 attempts per request
+- **Retryable statuses:** `429`, `500`, `502`, `503`, `504`
+- **Backoff:** `1500 ms × attempt` (1.5s → 3s → 4.5s → 6s → 7.5s)
+- **Throttle:** 250 ms `sleep` between successful paginated requests and between
+  per-ID lookups in `fetchSomeScores`
+- **Headers:** every request sends `Accept: application/json` and a
+  `User-Agent: Mozilla/5.0` header
+
+This applies to `fetchAllScores`, `fetchSomeScores`, and `fetchTraits` (and any
+function that builds on them, such as `getScoresPerTrait`,
+`getScoresPerCategory`, and `loadScoreStats`).
+
 ### Build Details
 
 - **Source:** `src/js/getPGS_loadScores.js`, `src/js/getPGS_loadTxts.js`, `src/js/getPGS_loadTraits.js`, `src/js/landingPage.js`
