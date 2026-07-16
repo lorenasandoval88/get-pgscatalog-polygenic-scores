@@ -11140,6 +11140,7 @@ function idFromPath(path) {
 // Accepts: a PGS id string ("PGS000050"), a local/remote file path or URL
 // (".txt" or ".txt.gz"), or a File / FileList / File-like object.
 async function loadScoreTxt(input, cache = true, build = 37) {
+    console.log("loadScoreTxt():", input, cache, build);
     // ── File object / FileList branch ──────────────────────────────────────
     const isFileInstance = typeof File !== "undefined" && input instanceof File;
     const isFileLikeObject = !!input && typeof input === "object" && typeof input.text === "function";
