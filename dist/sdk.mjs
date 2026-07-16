@@ -11224,9 +11224,9 @@ async function fetchScore(id = 'PGS000050', build = 37, range) {
 
 // create PGS obj and data --------------------------
 async function parseScore(id, txt) {
-    let obj = {
-        id: id
-    };
+    console.log(`parseScore: Parsing PGS scoring file ${id} (${txt.length} chars)`);
+
+    let obj = {id: id};
     obj.txt = txt;
     let rows = obj.txt.split(/[\r\n]/g);
     let metaL = rows.filter(r => (r[0] == '#')).length;
@@ -11308,5 +11308,5 @@ function getTextSizeKB(text) {
   }
 }
 
-export { checkStorageKB, estimateLocalForageSizeKB, fetchAllScores, fetchDataAndRenderPlots, fetchSomeScores, fetchTraits, getScoresPerCategory, getScoresPerTrait, getTextSizeKB, getTxts, loadScoreStats, localforage };
+export { checkStorageKB, estimateLocalForageSizeKB, fetchAllScores, fetchDataAndRenderPlots, fetchSomeScores, fetchTraits, getScoresPerCategory, getScoresPerTrait, getTextSizeKB, getTxts, loadScoreStats, localforage, parseScore };
 //# sourceMappingURL=sdk.mjs.map
