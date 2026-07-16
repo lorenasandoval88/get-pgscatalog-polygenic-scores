@@ -11119,29 +11119,93 @@ function getByteSize(value) {
     return encoded.length * 2;
 }
 
-async function getTxts(ids, _unused, cache = true) {
-    // console.log("getTxts()", ids)
-    let data = await Promise.all(ids.map(async (id, i) => {
-        let score = null;
+// Decodes an ArrayBuffer to text, transparently inflating gzip-compressed data
+// (magic bytes 0x1f 0x8b) so both `.txt` and `.txt.gz` inputs work.
+function bufferToText(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const isGzip = bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+    if (isGzip) {
+        return pako.inflate(bytes, { to: "string" });
+    }
+    return new TextDecoder("utf-8").decode(bytes);
+}
+
+// Derives a stable cache id from a file path/URL (filename without .txt/.gz).
+function idFromPath(path) {
+    const match = String(path).match(/([^/\\?#]+?)(?:\.txt)?(?:\.gz)?(?:[?#].*)?$/i);
+    return match?.[1] || String(path);
+}
+
+// Resolves a single input into a parsed PGS score object.
+// Accepts: a PGS id string ("PGS000050"), a local/remote file path or URL
+// (".txt" or ".txt.gz"), or a File / FileList / File-like object.
+async function loadScoreTxt(input, cache = true, build = 37) {
+    // ── File object / FileList branch ──────────────────────────────────────
+    const isFileInstance = typeof File !== "undefined" && input instanceof File;
+    const isFileLikeObject = !!input && typeof input === "object" && typeof input.text === "function";
+    const isFileListLike = !!input && typeof input === "object" &&
+        typeof input.length === "number" && input.length > 0 &&
+        typeof input[0]?.text === "function";
+
+    if (isFileInstance || isFileLikeObject || isFileListLike) {
+        const file = isFileListLike ? input[0] : input;
+        const id = file.name;
+        const cacheKey = `${PGS_KEY_PREFIX}${id}`;
 
         if (cache) {
-            score = await localforage.getItem(`${PGS_KEY_PREFIX}${id}`);
-            // console.log(`Cache lookup for ${PGS_KEY_PREFIX}${id}:`, score ? "HIT" : "MISS")
+            console.log("getTxts():",` Cache hit for PGS-Catalog ${id}`);
+            const cached = await localforage.getItem(cacheKey);
+            if (cached != null) return cached;
         }
 
-        if (score == null) {
-            // console.log(`Cache miss for ${id}. Fetching from network...`)
-            score = await parseScore(id, await fetchScore(id));
-            if (cache) {
-                score.cachedAt = Date.now();
-                await localforage.setItem(`${PGS_KEY_PREFIX}${id}`, score);
-            }
+        const txt = bufferToText(await file.arrayBuffer());
+        const score = await parseScore(id, txt);
+        if (cache) {
+            score.cachedAt = Date.now();
+            await localforage.setItem(cacheKey, score);
         }
-        return score
-    })
-    );
+        return score;
+    }
+
+    if (typeof input !== "string") {
+        throw new TypeError("getTxts expects a PGS id string, a path/URL string, or a File object");
+    }
+
+    // ── PGS id vs. file path/URL branch ────────────────────────────────────
+    const isPgsId = /^PGS\d+$/i.test(input.trim());
+    const id = isPgsId ? input.trim() : idFromPath(input);
+    const cacheKey = `${PGS_KEY_PREFIX}${id}`;
+
     if (cache) {
-        await limitStorage(ids);
+        const cached = await localforage.getItem(cacheKey);
+        if (cached != null) return cached;
+    }
+
+    let txt;
+    if (isPgsId) {
+        txt = await fetchScore(id, build);
+    } else {
+        const response = await fetch(input);
+        if (!response.ok) {
+            throw new Error(`Failed to load ${input}: ${response.status}`);
+        }
+        txt = bufferToText(await response.arrayBuffer());
+    }
+
+    const score = await parseScore(id, txt);
+    if (cache) {
+        score.cachedAt = Date.now();
+        await localforage.setItem(cacheKey, score);
+    }
+    return score;
+}
+
+async function getTxts(inputs, _unused, cache = true) {
+    // console.log("getTxts()", inputs)
+    const list = Array.isArray(inputs) ? inputs : [inputs];
+    const data = await Promise.all(list.map((input) => loadScoreTxt(input, cache)));
+    if (cache) {
+        await limitStorage(data.map((score) => score.id));
     }
     return data
 }
