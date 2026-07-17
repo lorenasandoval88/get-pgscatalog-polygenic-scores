@@ -11140,7 +11140,7 @@ function idFromPath(path) {
 // Accepts: a PGS id string ("PGS000050"), a local/remote file path or URL
 // (".txt" or ".txt.gz"), or a File / FileList / File-like object.
 async function loadScoreTxt(input, cache = true, build = 37) {
-    console.log("loadScoreTxt():", input, cache, build);
+    console.log("loadScoreTxt() in getTxts():", input, cache, build);
     // ── File object / FileList branch ──────────────────────────────────────
     const isFileInstance = typeof File !== "undefined" && input instanceof File;
     const isFileLikeObject = !!input && typeof input === "object" && typeof input.text === "function";
@@ -11154,9 +11154,12 @@ async function loadScoreTxt(input, cache = true, build = 37) {
         const cacheKey = `${PGS_KEY_PREFIX}${id}`;
 
         if (cache) {
-            console.log("getTxts():",` Cache hit for PGS-Catalog ${id}`);
             const cached = await localforage.getItem(cacheKey);
-            if (cached != null) return cached;
+            if (cached != null) {
+                console.log("loadScoreTxt() in getTxts()",` Cache hit for PGS-Catalog ${id}`);
+                return cached;
+            }
+
         }
 
         const txt = bufferToText(await file.arrayBuffer());
