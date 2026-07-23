@@ -231,6 +231,6 @@ async function parseScore(id, txt) {
 
 
 export {
-    getPgsTxt as getTxts,
+    getPgsTxt,
     parseScore
 }
