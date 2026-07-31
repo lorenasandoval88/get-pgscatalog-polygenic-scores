@@ -6,6 +6,6 @@ export {
 	fetchTraits,
 	getScoresPerCategory,
 	getScoresPerTrait,
-	getTxts,
+	getPgsTxt,
 	loadScoreStats,
 } from "./src/js/cloud/pgs_node.js";

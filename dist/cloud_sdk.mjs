@@ -7098,34 +7098,122 @@ async function fetchTraits({ pageSize = 200 } = {}) {
 	};
 }
 
-async function getScoresPerTrait({ maxTraits = Infinity } = {}) {
-	const { scores } = await fetchAllScores();
-	const byTrait = new Map();
+function getAssociatedPgsIdsFromTrait(trait) {
+	if (!trait || typeof trait !== "object") return [];
 
-	for (const score of scores) {
-		const traitName = score?.trait_reported ?? "NR";
-		if (!byTrait.has(traitName)) {
-			byTrait.set(traitName, []);
-		}
-		byTrait.get(traitName).push(score);
+	if (Array.isArray(trait.associated_pgs_ids)) return trait.associated_pgs_ids;
+	if (Array.isArray(trait.pgs_ids)) return trait.pgs_ids;
+	if (Array.isArray(trait.associated_pgs)) {
+		return trait.associated_pgs
+			.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
+			.filter(Boolean);
+	}
+	if (Array.isArray(trait.scores)) {
+		return trait.scores
+			.map((item) => (typeof item === "string" ? item : item?.id ?? item?.pgs_id))
+			.filter(Boolean);
 	}
 
-	const limitedTraits = [...byTrait.entries()].slice(0, maxTraits);
-	const scoresPerTrait = Object.fromEntries(
-		limitedTraits.map(([traitName, traitScores]) => [
-			traitName,
-			{
-				pgs_ids: traitScores.map((score) => score?.id).filter(Boolean),
-				scores: traitScores,
-				summary: computeScoreSummary(traitScores),
-			},
-		])
+	return [];
+}
+
+function getTraitName(trait, index) {
+	return trait?.label
+		?? trait?.trait_label
+		?? trait?.name
+		?? trait?.trait_reported
+		?? trait?.id
+		?? `trait-${index + 1}`;
+}
+
+// Canonical ontology key for a trait: the EFO ID when available.
+function getTraitId(trait, index) {
+	return trait?.id
+		?? trait?.efo_id
+		?? trait?.trait_id
+		?? getTraitName(trait, index);
+}
+
+// Returns entries of [efoId, { label, pgs_ids }] so traits are keyed by ontology ID
+// while retaining the human-readable label for display.
+function getTraitToPgsIdsFromTraitSummary(traitSummary) {
+	const summary = traitSummary?.summary ?? traitSummary;
+	const traitEntries = new Map();
+
+	const addEntry = (traitId, label, pgsIds) => {
+		const key = String(traitId);
+		if (!traitEntries.has(key)) {
+			traitEntries.set(key, { label, ids: new Set() });
+		}
+		const entry = traitEntries.get(key);
+		for (const pgsId of pgsIds) {
+			entry.ids.add(pgsId);
+		}
+	};
+
+	const traits = Array.isArray(summary?.traits) ? summary.traits : [];
+	traits.forEach((trait, index) => {
+		addEntry(
+			getTraitId(trait, index),
+			getTraitName(trait, index),
+			getAssociatedPgsIdsFromTrait(trait)
+		);
+	});
+
+	if (!traitEntries.size) {
+		const categories = Array.isArray(summary?.categories) ? summary.categories : [];
+		for (const entry of categories) {
+			const categoryName = entry?.category ?? "NR";
+			addEntry(categoryName, categoryName, entry?.pgs_ids ?? []);
+		}
+	}
+
+	return [...traitEntries.entries()]
+		.map(([traitId, entry]) => [traitId, { label: entry.label, pgs_ids: [...entry.ids] }])
+		.filter(([, entry]) => entry.pgs_ids.length > 0);
+}
+
+// Traits are EFO-derived: groupings come from the /trait/all ontology entries,
+// linked to scores through associated PGS IDs (mirrors the browser SDK).
+async function getScoresPerTrait({ maxTraits = Infinity, onStatus } = {}) {
+	const report = (message) => { if (typeof onStatus === "function") onStatus(message); };
+
+	report("getScoresPerTrait: loading traits...");
+	const traitPayload = await fetchTraits();
+
+	report("getScoresPerTrait: loading all scores...");
+	const { scores } = await fetchAllScores();
+	const scoreById = new Map(
+		scores
+			.filter((score) => score?.id != null)
+			.map((score) => [String(score.id), score])
 	);
+
+	const traitEntries = getTraitToPgsIdsFromTraitSummary(traitPayload);
+	const scoresPerTrait = {};
+	let processedTraits = 0;
+
+	for (const [traitId, { label, pgs_ids: pgsIds }] of traitEntries) {
+		if (processedTraits >= maxTraits) break;
+		const traitScores = pgsIds.map((id) => scoreById.get(String(id))).filter(Boolean);
+		scoresPerTrait[traitId] = {
+			efo_id: traitId,
+			label,
+			pgs_ids: pgsIds,
+			scores: traitScores,
+			summary: computeScoreSummary(traitScores),
+		};
+		processedTraits += 1;
+	}
+
+	console.log(`getScoresPerTrait: ${processedTraits}/${traitEntries.length} traits linked across ${scoreById.size} scores.`);
+	report(`getScoresPerTrait: done — ${processedTraits} traits.`);
 
 	return {
 		savedAt: new Date().toISOString(),
-		processedTraits: limitedTraits.length,
-		totalTraitEntries: byTrait.size,
+		sourceTraitSavedAt: traitPayload?.savedAt ?? null,
+		processedTraits,
+		totalTraitEntries: traitEntries.length,
 		scoresPerTrait,
 	};
 }
@@ -7176,8 +7264,8 @@ async function parseScoreText(id, txt) {
 	obj.meta = { txt: rows.slice(0, metaL) };
 	obj.cols = rows[metaL].split(/\t/g);
 	obj.dt = rows.slice(metaL + 1).map((row) => row.split(/\t/g));
-	if (obj.dt.slice(-1).length === 1) {
-		obj.dt.pop(-1);
+	if (obj.dt.at(-1)?.length === 1 && obj.dt.at(-1)[0] === "") {
+		obj.dt.pop();
 	}
 
 	const indInt = [obj.cols.indexOf("chr_position"), obj.cols.indexOf("hm_pos")];
@@ -7207,9 +7295,9 @@ async function parseScoreText(id, txt) {
 	return obj;
 }
 
-async function getTxts(ids, _unused, _cache = false) {
-	const normalizedIds = Array.isArray(ids) ? ids : [ids];
-	return Promise.all(normalizedIds.map(async (id) => parseScoreText(id, await fetchScoreText(id))));
+async function getPgsTxt(input, _unused, _cache = false) {
+	const id = String(input ?? "").trim();
+	return parseScoreText(id, await fetchScoreText(id));
 }
 
 async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats = false, includeCategoryStats = false } = {}) {
@@ -7228,5 +7316,5 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 	return results;
 }
 
-export { fetchAllScores, fetchSomeScores, fetchTraits, getScoresPerCategory, getScoresPerTrait, getTxts, loadScoreStats };
+export { fetchAllScores, fetchSomeScores, fetchTraits, getPgsTxt, getScoresPerCategory, getScoresPerTrait, loadScoreStats };
 //# sourceMappingURL=cloud_sdk.mjs.map

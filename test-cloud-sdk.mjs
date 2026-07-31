@@ -5,7 +5,7 @@ import {
   fetchTraits,
   getScoresPerTrait,
   getScoresPerCategory,
-  getTxts,
+  getPgsTxt,
   loadScoreStats,
 } from "./dist/cloud_sdk.mjs";
 
@@ -16,7 +16,7 @@ console.log("  - fetchSomeScores:", typeof fetchSomeScores);
 console.log("  - fetchTraits:", typeof fetchTraits);
 console.log("  - getScoresPerTrait:", typeof getScoresPerTrait);
 console.log("  - getScoresPerCategory:", typeof getScoresPerCategory);
-console.log("  - getTxts:", typeof getTxts);
+console.log("  - getPgsTxt:", typeof getPgsTxt);
 console.log("  - loadScoreStats:", typeof loadScoreStats);
 
 console.log("\n✓ cloud_sdk.mjs export surface validated");

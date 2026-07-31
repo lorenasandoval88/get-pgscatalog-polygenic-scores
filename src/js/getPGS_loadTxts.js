@@ -199,8 +199,8 @@ async function parseScore(id, txt) {
     }
     obj.cols = rows[metaL].split(/\t/g)
     obj.dt = rows.slice(metaL + 1).map(r => r.split(/\t/g))
-    if (obj.dt.slice(-1).length == 1) {
-        obj.dt.pop(-1)
+    if (obj.dt.at(-1)?.length === 1 && obj.dt.at(-1)[0] === "") {
+        obj.dt.pop()
     }
     // parse numerical types
     const indInt = [obj.cols.indexOf('chr_position'), obj.cols.indexOf('hm_pos')]
@@ -217,7 +217,7 @@ async function parseScore(id, txt) {
             r[ind] = parseInt(r[ind])
         })
         indBol.forEach(ind => {
-            r[ind] = (r[11] == 'True') ? true : false
+            r[ind] = String(r[ind]).toLowerCase() === "true"
         })
         return r
     })

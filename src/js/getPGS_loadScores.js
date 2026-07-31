@@ -1,10 +1,11 @@
 import localforage from "localforage";
+import { fetchTraits } from "./getPGS_loadTraits.js";
 
 const PGS_BASE = "https://www.pgscatalog.org/rest";
 
 const ALL_SCORE_SUMMARY_KEY = "PGS_Catalog:all-score-summary"; //fetchAllScores() & fetchSomeScores() uses this key to cache the full list of scores and their summary, which fetchSomeScores() can then use to source individual scores by ID without needing to fetch from network if cache is valid. Also used as source for getScoresPerTrait() / getScoresPerCategory() to link traits or categories to their specific scores and variants info, rather than relying on the more limited topTraits from the all-scores summary.
 const TRAIT_SUMMARY_KEY = "PGS_Catalog:trait-summary"; // needed in getScoresPerTrait() and getScoresPerCategory()
-const SCORES_PER_TRAIT_SUMMARY_KEY = "PGS_Catalog:scores-per-trait-summary"; // needed in getScoresPerTrait()
+const SCORES_PER_TRAIT_SUMMARY_KEY = "PGS_Catalog:scores-per-trait-summary-v2"; // needed in getScoresPerTrait(); v2 = keyed by EFO ID
 const SCORES_PER_CATEGORY_SUMMARY_KEY = "PGS_Catalog:scores-per-category-summary"; // needed in getScoresPerCategory()
 
 function quantile(sorted, q) {
@@ -288,18 +289,20 @@ function getVariantsRangeFromScores(scores = []) {
 export function buildTopTraitsFromScoresPerTrait(scoresPerTraitPayload, maxTraits = 50) {
 	/**
 	 * Convert scores-per-trait payload into sorted plotting tuples.
+	 * Entries are keyed by EFO ID; the trait `label` is used for display.
 	 * @param {object} scoresPerTraitPayload
 	 * @param {number} [maxTraits=50]
 	 * @returns {Array<[string, number, number|string, number|string]>}
 	 */
 	const entries = Object.entries(scoresPerTraitPayload?.scoresPerTrait ?? {});
 	return entries
-		.map(([traitName, traitValue]) => {
+		.map(([traitId, traitValue]) => {
+			const displayName = traitValue?.label ?? traitId;
 			const scoreCount = Array.isArray(traitValue?.scores)
 				? traitValue.scores.length
 				: (Array.isArray(traitValue?.pgs_ids) ? traitValue.pgs_ids.length : 0);
 			const variantsRange = getVariantsRangeFromScores(traitValue?.scores ?? []);
-			return [traitName, scoreCount, variantsRange.min, variantsRange.max];
+			return [displayName, scoreCount, variantsRange.min, variantsRange.max];
 		})
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, maxTraits);
@@ -617,6 +620,15 @@ function getTraitName(trait, index) {
 		?? `trait-${index + 1}`;
 }
 
+// Canonical ontology key for a trait: the EFO ID when available.
+// Falls back to the display name only when no ontology identifier exists.
+function getTraitId(trait, index) {
+	return trait?.id
+		?? trait?.efo_id
+		?? trait?.trait_id
+		?? getTraitName(trait, index);
+}
+
 function normalizeCategoryEntries(entries) {
 	if (!Array.isArray(entries)) return [];
 
@@ -652,64 +664,78 @@ function getCategoryToPgsIdsFromTraitSummary(traitSummary) {
 		.filter(([, ids]) => ids.length > 0);
 }
 
+// Returns entries of [efoId, { label, pgs_ids }] so traits are keyed by ontology ID
+// while retaining the human-readable label for display.
 function getTraitToPgsIdsFromTraitSummary(traitSummary) {
 	const summary = traitSummary?.summary ?? traitSummary;
-	const traitToPgsIds = new Map();
+	const traitEntries = new Map();
+
+	const addEntry = (traitId, label, pgsIds) => {
+		const key = String(traitId);
+		if (!traitEntries.has(key)) {
+			traitEntries.set(key, { label, ids: new Set() });
+		}
+		const entry = traitEntries.get(key);
+		for (const pgsId of pgsIds) {
+			entry.ids.add(pgsId);
+		}
+	};
 
 	const traits = Array.isArray(summary?.traits) ? summary.traits : [];
 	if (traits.length) {
 		traits.forEach((trait, index) => {
-			const traitName = getTraitName(trait, index);
-			if (!traitToPgsIds.has(traitName)) {
-				traitToPgsIds.set(traitName, new Set());
-			}
-			const idSet = traitToPgsIds.get(traitName);
-			for (const pgsId of getAssociatedPgsIdsFromTrait(trait)) {
-				idSet.add(pgsId);
-			}
+			addEntry(
+				getTraitId(trait, index),
+				getTraitName(trait, index),
+				getAssociatedPgsIdsFromTrait(trait)
+			);
 		});
 	}
 
-	if (!traitToPgsIds.size) {
+	if (!traitEntries.size) {
 		const categories = normalizeCategoryEntries(summary?.categories ?? summary?.topCategories);
 		for (const entry of categories) {
-			const traitName = entry?.category ?? "NR";
-			if (!traitToPgsIds.has(traitName)) {
-				traitToPgsIds.set(traitName, new Set());
-			}
-			const idSet = traitToPgsIds.get(traitName);
-			for (const pgsId of (entry?.pgs_ids ?? [])) {
-				idSet.add(pgsId);
-			}
+			const categoryName = entry?.category ?? "NR";
+			addEntry(categoryName, categoryName, entry?.pgs_ids ?? []);
 		}
 	}
 
-	return [...traitToPgsIds.entries()]
-		.map(([traitName, idSet]) => [traitName, [...idSet]])
-		.filter(([, ids]) => ids.length > 0);
+	return [...traitEntries.entries()]
+		.map(([traitId, entry]) => [traitId, { label: entry.label, pgs_ids: [...entry.ids] }])
+		.filter(([, entry]) => entry.pgs_ids.length > 0);
 }
 
 
 // TRAITS/CATEGORIES are linked indirectly through the cached traitSummary object, using PGS IDs as the bridge.
-export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infinity } = {}) {
+export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infinity, onStatus } = {}) {
 	/**
 	 * Build and cache trait -> scores mapping using trait-summary-linked PGS IDs.
 	 * Optimized: loads all scores once and builds a Map lookup instead of calling fetchSomeScores() per trait.
-	 * @param {{ forceRefresh?: boolean, maxTraits?: number }} [options]
+	 * Self-healing: if the trait-summary cache is missing, fetchTraits() is called to populate it.
+	 * @param {{ forceRefresh?: boolean, maxTraits?: number, onStatus?: (message: string) => void }} [options]
 	 * @returns {Promise<object>}
 	 */
-	// console.log("getScoresPerTrait():Loading scores per trait...");
+	const report = (message) => { if (typeof onStatus === "function") onStatus(message); };
+
+	report("getScoresPerTrait: checking cache...");
 	const cached = await getStoredScoreSummary(SCORES_PER_TRAIT_SUMMARY_KEY);
 	if (!forceRefresh && cached?.scoresPerTrait) {
+		report("getScoresPerTrait: served from cache.");
 		return cached;
 	}
 
-	const traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
+	let traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
 	if (!traitSummary?.summary && !traitSummary?.categories) {
-		throw new Error("Missing trait summary cache (TRAIT_SUMMARY_KEY). Call fetchTraits() first, or run fetchDataAndRenderPlots() to fetch and render trait data.");
+		report("getScoresPerTrait: trait summary missing — running fetchTraits()...");
+		await fetchTraits();
+		traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
+	}
+	if (!traitSummary?.summary && !traitSummary?.categories) {
+		throw new Error("Missing trait summary cache (TRAIT_SUMMARY_KEY) even after fetchTraits(). Check network/API availability.");
 	}
 
 	// Load all scores once and build a Map for fast lookup
+	report("getScoresPerTrait: loading all scores...");
 	const { scores: allScores } = await fetchAllScores();
 	const scoreById = new Map(
 		allScores
@@ -721,11 +747,13 @@ export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infi
 	const scoresPerTrait = {};
 	let processedTraits = 0;
 
-	for (const [traitName, pgsIds] of traitEntries) {
+	for (const [traitId, { label, pgs_ids: pgsIds }] of traitEntries) {
 		if (processedTraits >= maxTraits) break;
-		// console.log(`Building getScoresPerTrait for trait ${traitName} with ${pgsIds.length} associated PGS IDs...`);
+		// console.log(`Building getScoresPerTrait for trait ${traitId} (${label}) with ${pgsIds.length} associated PGS IDs...`);
 		const traitScores = pgsIds.map((id) => scoreById.get(String(id))).filter(Boolean);
-		scoresPerTrait[traitName] = {
+		scoresPerTrait[traitId] = {
+			efo_id: traitId,
+			label,
 			pgs_ids: pgsIds,
 			scores: traitScores,
 			summary: computeSummary(traitScores),
@@ -742,31 +770,43 @@ export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infi
 	};
 
 	await localforage.setItem(SCORES_PER_TRAIT_SUMMARY_KEY, payload);
+	console.log(`getScoresPerTrait: ${processedTraits}/${traitEntries.length} traits linked across ${scoreById.size} scores.`);
+	report(`getScoresPerTrait: done — ${processedTraits} traits.`);
 	return payload;
 }
 
 //---------------START OF CATEGORY-SCORE LINKING LOGIC------------------
 
 // TODO error: 1700 traits vs 669. 
-export async function getScoresPerCategory({ forceRefresh = false, maxCategories = Infinity } = {}) {
+export async function getScoresPerCategory({ forceRefresh = false, maxCategories = Infinity, onStatus } = {}) {
 	/**
 	 * Build and cache category -> scores mapping using trait-summary-linked PGS IDs.
 	 * Optimized: loads all scores once and builds a Map lookup instead of calling fetchSomeScores() per category.
-	 * @param {{ forceRefresh?: boolean, maxCategories?: number }} [options]
+	 * Self-healing: if the trait-summary cache is missing, fetchTraits() is called to populate it.
+	 * @param {{ forceRefresh?: boolean, maxCategories?: number, onStatus?: (message: string) => void }} [options]
 	 * @returns {Promise<object>}
 	 */
-	// console.log("getScoresPerCategory():Loading scores per category...");
+	const report = (message) => { if (typeof onStatus === "function") onStatus(message); };
+
+	report("getScoresPerCategory: checking cache...");
 	const cached = await getStoredScoreSummary(SCORES_PER_CATEGORY_SUMMARY_KEY);
 	if (!forceRefresh && cached?.scoresPerCategory) {
+		report("getScoresPerCategory: served from cache.");
 		return cached;
 	}
 
-	const traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
+	let traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
 	if (!traitSummary?.summary && !traitSummary?.categories) {
-		throw new Error("Missing trait summary cache (TRAIT_SUMMARY_KEY). Call fetchTraits() first, or run fetchDataAndRenderPlots() to fetch and render trait data.");
+		report("getScoresPerCategory: trait summary missing — running fetchTraits()...");
+		await fetchTraits();
+		traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
+	}
+	if (!traitSummary?.summary && !traitSummary?.categories) {
+		throw new Error("Missing trait summary cache (TRAIT_SUMMARY_KEY) even after fetchTraits(). Check network/API availability.");
 	}
 
 	// Load all scores once and build a Map for fast lookup
+	report("getScoresPerCategory: loading all scores...");
 	const { scores: allScores } = await fetchAllScores();
 	const scoreById = new Map(
 		allScores
@@ -799,6 +839,8 @@ export async function getScoresPerCategory({ forceRefresh = false, maxCategories
 	};
 
 	await localforage.setItem(SCORES_PER_CATEGORY_SUMMARY_KEY, payload);
+	console.log(`getScoresPerCategory: ${processedCategories}/${categoryEntries.length} categories linked across ${scoreById.size} scores.`);
+	report(`getScoresPerCategory: done — ${processedCategories} categories.`);
 	return payload;
 }
 export async function getScoresPerCategory2({ forceRefresh = false } = {}) {
