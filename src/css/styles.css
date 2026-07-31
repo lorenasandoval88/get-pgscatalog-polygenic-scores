@@ -72,6 +72,22 @@ p.lead {
   word-break: break-word;
 }
 
+/* Loading progress bars: one third of the page width */
+.load-progress {
+  width: 33.3333%;
+  min-width: 12rem;
+  height: 0.75rem;
+}
+
+.load-progress .progress-bar {
+  width: 0;
+  transition: width 0.3s ease;
+}
+
+.load-progress.is-complete {
+  display: none;
+}
+
 /* =========================
    Masthead / Hero
    ========================= */

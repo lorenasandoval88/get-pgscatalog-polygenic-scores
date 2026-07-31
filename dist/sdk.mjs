@@ -3801,6 +3801,34 @@ function setTextContent(id, text) {
 	element.textContent = text;
 }
 
+const PROGRESS_IDS = {
+	trait: "traitProgress",
+	scoreTrait: "scoreTraitProgress",
+	scoreCategory: "scoreCategoryProgress",
+};
+
+/**
+ * Update a section's loading progress bar.
+ * @param {"trait"|"scoreTrait"|"scoreCategory"} kind
+ * @param {number} percent 0-100
+ * @param {{ done?: boolean }} [options] when done, the bar is hidden
+ */
+function setLoadProgress(kind, percent, { done = false } = {}) {
+	const container = document.getElementById(PROGRESS_IDS[kind]);
+	if (!container) return;
+
+	const clamped = Math.min(100, Math.max(0, Number(percent) || 0));
+	container.setAttribute("aria-valuenow", String(clamped));
+	container.classList.toggle("is-complete", done);
+
+	const bar = container.querySelector(".progress-bar");
+	if (!bar) return;
+	bar.style.width = `${clamped}%`;
+	if (done) {
+		bar.classList.remove("progress-bar-animated");
+	}
+}
+
 function renderTraitStatus({ sourceStatus, output } = {}) {
 	if (sourceStatus !== undefined) {
 		setTextContent("traitSourceStatus", sourceStatus);
@@ -4047,8 +4075,10 @@ function renderScorePerCategoryPlot(topCategories) {
 async function fetchDataAndRenderPlots() {
 	try {
 		renderTraitStatus({ sourceStatus: "Source: loading PGS trait metadata..." });
+		setLoadProgress("trait", 15);
 
 		const results = await fetchTraits();
+		setLoadProgress("trait", 65);
 		const summary = results?.summary ?? null;
 		if (!summary) {
 			renderTraitStatus({
@@ -4060,6 +4090,7 @@ async function fetchDataAndRenderPlots() {
 
 		renderTraitStats(summary);
 		renderTraitPlot(summary);
+		setLoadProgress("trait", 100, { done: true });
 
 		if (results.source === "cache") {
 			renderTraitStatus({
@@ -4089,6 +4120,8 @@ async function fetchDataAndRenderPlots() {
 		});
 		console.error(error);
 		return null;
+	} finally {
+		setLoadProgress("trait", 100, { done: true });
 	}
 }
 
@@ -4112,11 +4145,22 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			output: !includeCategoryStats ? "Category-linked score stats not loaded." : undefined,
 		});
 
+		if (includeAllScoreStats || includeTraitStats) {
+			setLoadProgress("scoreTrait", 10);
+		}
+		if (includeCategoryStats) {
+			setLoadProgress("scoreCategory", 10);
+		}
+
 		if (includeTraitStats || includeCategoryStats) {
 			await fetchTraits();
+			setLoadProgress("scoreTrait", 30);
+			setLoadProgress("scoreCategory", 30);
 		}
 		if (includeAllScoreStats || includeTraitStats || includeCategoryStats) {
 			results = await fetchAllScores();
+			setLoadProgress("scoreTrait", 55);
+			setLoadProgress("scoreCategory", 55);
 		}
 
 		const summary = results.summary;
@@ -4131,6 +4175,7 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			} catch (error) {
 				console.warn("loadScoreStats(): unable to build topTraits from getScoresPerTrait", error);
 			}
+			setLoadProgress("scoreTrait", 85);
 		}
 		if (includeCategoryStats) {
 			try {
@@ -4139,6 +4184,7 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 			} catch (error) {
 				console.warn("loadScoreStats(): unable to build categories from getScoresPerCategory", error);
 			}
+			setLoadProgress("scoreCategory", 85);
 		}
 
 		if (includeAllScoreStats && !summary) {
@@ -4274,6 +4320,9 @@ async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats 
 
 		console.error(error);
 		return results;
+	} finally {
+		setLoadProgress("scoreTrait", 100, { done: true });
+		setLoadProgress("scoreCategory", 100, { done: true });
 	}
 }
 
