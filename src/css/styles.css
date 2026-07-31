@@ -47,6 +47,32 @@ p.lead {
 }
 
 /* =========================
+   Chart panels
+   ========================= */
+.chart-panel {
+  width: 100%;
+  max-width: 700px;
+  overflow: visible;
+}
+
+.chart-panel--md {
+  height: 400px;
+}
+
+.chart-panel--lg {
+  height: 650px;
+}
+
+.chart-panel--xl {
+  height: 1100px;
+}
+
+.chart-output {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* =========================
    Masthead / Hero
    ========================= */
 .masthead {

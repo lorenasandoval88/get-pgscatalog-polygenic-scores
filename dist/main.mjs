@@ -3036,7 +3036,7 @@ const PGS_BASE = "https://www.pgscatalog.org/rest";
 
 const ALL_SCORE_SUMMARY_KEY = "PGS_Catalog:all-score-summary"; //fetchAllScores() & fetchSomeScores() uses this key to cache the full list of scores and their summary, which fetchSomeScores() can then use to source individual scores by ID without needing to fetch from network if cache is valid. Also used as source for getScoresPerTrait() / getScoresPerCategory() to link traits or categories to their specific scores and variants info, rather than relying on the more limited topTraits from the all-scores summary.
 const TRAIT_SUMMARY_KEY = "PGS_Catalog:trait-summary"; // needed in getScoresPerTrait() and getScoresPerCategory()
-const SCORES_PER_TRAIT_SUMMARY_KEY = "PGS_Catalog:scores-per-trait-summary-v2"; // needed in getScoresPerTrait(); v2 = keyed by EFO ID
+const SCORES_PER_TRAIT_SUMMARY_KEY = "PGS_Catalog:scores-per-trait-summary"; // needed in getScoresPerTrait()
 const SCORES_PER_CATEGORY_SUMMARY_KEY = "PGS_Catalog:scores-per-category-summary"; // needed in getScoresPerCategory()
 
 function quantile(sorted, q) {
@@ -3648,7 +3648,10 @@ async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infinity, o
 
 	report("getScoresPerTrait: checking cache...");
 	const cached = await getStoredScoreSummary(SCORES_PER_TRAIT_SUMMARY_KEY);
-	if (!forceRefresh && cached?.scoresPerTrait) {
+	// Pre-EFO payloads were keyed by trait label and lack `efo_id`; treat them as stale
+	// so they are recomputed and overwritten in place rather than orphaned under a new key.
+	const cachedIsEfoKeyed = Boolean(Object.values(cached?.scoresPerTrait ?? {})[0]?.efo_id);
+	if (!forceRefresh && cachedIsEfoKeyed) {
 		report("getScoresPerTrait: served from cache.");
 		return cached;
 	}

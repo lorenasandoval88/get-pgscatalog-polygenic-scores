@@ -181,7 +181,12 @@ async function fetchScore(id = 'PGS000050', build = 37, range) {
         ////console.log('Use the response here!');
     } else {
         txt = `:( Error loading PGS file. HTTP Response Code: ${response?.status}`
-        document.getElementById('pgsTextArea').value = txt
+        const textArea = typeof document !== "undefined" ? document.getElementById('pgsTextArea') : null
+        if (textArea) {
+            textArea.value = txt
+        } else {
+            console.error(txt)
+        }
     }
     return txt
 }
