@@ -7300,21 +7300,5 @@ async function getPgsTxt(input, _unused, _cache = false) {
 	return parseScoreText(id, await fetchScoreText(id));
 }
 
-async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats = false, includeCategoryStats = false } = {}) {
-	const results = {};
-
-	if (includeAllScoreStats) {
-		results.allScores = await fetchAllScores();
-	}
-	if (includeTraitStats) {
-		results.scoresPerTrait = await getScoresPerTrait();
-	}
-	if (includeCategoryStats) {
-		results.scoresPerCategory = await getScoresPerCategory();
-	}
-
-	return results;
-}
-
-export { fetchAllScores, fetchSomeScores, fetchTraits, getPgsTxt, getScoresPerCategory, getScoresPerTrait, loadScoreStats };
+export { fetchAllScores, fetchSomeScores, fetchTraits, getPgsTxt, getScoresPerCategory, getScoresPerTrait };
 //# sourceMappingURL=cloud_sdk.mjs.map

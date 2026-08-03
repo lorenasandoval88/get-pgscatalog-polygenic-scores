@@ -7,5 +7,4 @@ export {
 	getScoresPerCategory,
 	getScoresPerTrait,
 	getPgsTxt,
-	loadScoreStats,
 } from "./src/js/cloud/pgs_node.js";

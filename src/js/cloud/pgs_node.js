@@ -431,19 +431,3 @@ export async function getPgsTxt(input, _unused, _cache = false) {
 	return parseScoreText(id, await fetchScoreText(id));
 }
 
-export async function loadScoreStats({ includeAllScoreStats = false, includeTraitStats = false, includeCategoryStats = false } = {}) {
-	const results = {};
-
-	if (includeAllScoreStats) {
-		results.allScores = await fetchAllScores();
-	}
-	if (includeTraitStats) {
-		results.scoresPerTrait = await getScoresPerTrait();
-	}
-	if (includeCategoryStats) {
-		results.scoresPerCategory = await getScoresPerCategory();
-	}
-
-	return results;
-}
-

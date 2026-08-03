@@ -65,24 +65,25 @@ Current exports from `sdk.js`:
 - `getScoresPerTrait`
 - `getScoresPerCategory`
 - `loadScoreStats`
-- `getTxts`
+- `getPgsTxt`
 - `fetchTraits`
 - `estimateLocalForageSizeKB`
 - `checkStorageKB`
 - `getTextSizeKB`
 
-### getTxts
+### getPgsTxt
 
-`getTxts(ids, optionalArg, cache = true)`
+`getPgsTxt(input, optionalArg, cache = true)`
 
+- `input` accepts a PGS id string, a path/URL string (`.txt` or `.txt.gz`), or a File / FileList / File-like object.
 - `cache` defaults to `true` (current behavior).
 - Set `cache` to `false` to skip both cache reads and cache writes for that call.
 
 Examples:
 
 ```javascript
-await sdk.getTxts(ids); // default: uses cache
-await sdk.getTxts(ids, undefined, false); // bypass cache for this call
+await sdk.getPgsTxt(id); // default: uses cache
+await sdk.getPgsTxt(id, undefined, false); // bypass cache for this call
 ```
 
 ---
@@ -107,10 +108,9 @@ npm install pgs_catalog_sdk
 
 - `fetchAllScores()`
 - `fetchSomeScores(ids)`
-- `loadScoreStats()`
 - `getScoresPerTrait()`
 - `getScoresPerCategory()`
-- `getTxts(ids, optionalArg, cache = true)`
+- `getPgsTxt(input, optionalArg, cache = true)`
 - `fetchTraits()`
 
 ### Cloud SDK Usage
@@ -122,8 +122,7 @@ import {
   fetchTraits,
   getScoresPerTrait,
   getScoresPerCategory,
-  getTxts,
-  loadScoreStats,
+  getPgsTxt,
 } from "pgs_catalog_sdk/cloud_sdk.mjs";
 
 const scores = await fetchSomeScores(["PGS000001", "PGS000050"]);
