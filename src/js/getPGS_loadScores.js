@@ -712,6 +712,18 @@ function getTraitToPgsIdsFromTraitSummary(traitSummary) {
 }
 
 
+/**
+ * True if a trait/category map actually linked at least one score.
+ * A map that is well-formed but empty means the all-score summary was empty when it
+ * was built; such a payload must never be served from cache nor written to it, or the
+ * catalog UI stays blank until the user manually clears IndexedDB.
+ * @param {object|undefined} map - `scoresPerTrait` or `scoresPerCategory` object.
+ * @returns {boolean}
+ */
+function hasLinkedScores(map) {
+	return Object.values(map ?? {}).some((entry) => entry?.scores?.length > 0);
+}
+
 // TRAITS/CATEGORIES are linked indirectly through the cached traitSummary object, using PGS IDs as the bridge.
 export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infinity, onStatus } = {}) {
 	/**
@@ -728,9 +740,12 @@ export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infi
 	// Pre-EFO payloads were keyed by trait label and lack `efo_id`; treat them as stale
 	// so they are recomputed and overwritten in place rather than orphaned under a new key.
 	const cachedIsEfoKeyed = Boolean(Object.values(cached?.scoresPerTrait ?? {})[0]?.efo_id);
-	if (!forceRefresh && cachedIsEfoKeyed) {
+	if (!forceRefresh && cachedIsEfoKeyed && hasLinkedScores(cached?.scoresPerTrait)) {
 		report("getScoresPerTrait: served from cache.");
 		return cached;
+	}
+	if (!forceRefresh && cachedIsEfoKeyed) {
+		console.warn("getScoresPerTrait: cached payload has no linked scores — rebuilding.");
 	}
 
 	let traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
@@ -778,7 +793,11 @@ export async function getScoresPerTrait({ forceRefresh = false, maxTraits = Infi
 		scoresPerTrait,
 	};
 
-	await localforage.setItem(SCORES_PER_TRAIT_SUMMARY_KEY, payload);
+	if (hasLinkedScores(scoresPerTrait)) {
+		await localforage.setItem(SCORES_PER_TRAIT_SUMMARY_KEY, payload);
+	} else {
+		console.warn(`getScoresPerTrait: 0 scores linked across ${traitEntries.length} traits (${scoreById.size} scores available) — not caching.`);
+	}
 	console.log(`getScoresPerTrait: ${processedTraits}/${traitEntries.length} traits linked across ${scoreById.size} scores.`);
 	report(`getScoresPerTrait: done — ${processedTraits} traits.`);
 	return payload;
@@ -799,9 +818,12 @@ export async function getScoresPerCategory({ forceRefresh = false, maxCategories
 
 	report("getScoresPerCategory: checking cache...");
 	const cached = await getStoredScoreSummary(SCORES_PER_CATEGORY_SUMMARY_KEY);
-	if (!forceRefresh && cached?.scoresPerCategory) {
+	if (!forceRefresh && hasLinkedScores(cached?.scoresPerCategory)) {
 		report("getScoresPerCategory: served from cache.");
 		return cached;
+	}
+	if (!forceRefresh && cached?.scoresPerCategory) {
+		console.warn("getScoresPerCategory: cached payload has no linked scores — rebuilding.");
 	}
 
 	let traitSummary = await getStoredScoreSummary(TRAIT_SUMMARY_KEY);
@@ -847,7 +869,11 @@ export async function getScoresPerCategory({ forceRefresh = false, maxCategories
 		scoresPerCategory,
 	};
 
-	await localforage.setItem(SCORES_PER_CATEGORY_SUMMARY_KEY, payload);
+	if (hasLinkedScores(scoresPerCategory)) {
+		await localforage.setItem(SCORES_PER_CATEGORY_SUMMARY_KEY, payload);
+	} else {
+		console.warn(`getScoresPerCategory: 0 scores linked across ${categoryEntries.length} categories (${scoreById.size} scores available) — not caching.`);
+	}
 	console.log(`getScoresPerCategory: ${processedCategories}/${categoryEntries.length} categories linked across ${scoreById.size} scores.`);
 	report(`getScoresPerCategory: done — ${processedCategories} categories.`);
 	return payload;
