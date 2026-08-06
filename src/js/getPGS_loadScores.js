@@ -419,11 +419,15 @@ export async function fetchAllScores({ cache = true, pageSize = 200 } = {}) {
 	};
 
 	const cached = cache ? await getStoredScoreSummary(ALL_SCORE_SUMMARY_KEY) : null;
+	// A summary alone is not a usable cache hit: getScoresPerTrait()/getScoresPerCategory()
+	// build their PGS-ID index from `scores`, so an entry with an empty `scores` array
+	// must be treated as stale and refetched rather than served.
+	const cachedHasScores = Array.isArray(cached?.scores) && cached.scores.length > 0;
 
 	try {
-		if (cache && cached?.summary && isCacheWithinMonths(cached.savedAt, 3)) {
+		if (cache && cached?.summary && cachedHasScores && isCacheWithinMonths(cached.savedAt, 3)) {
 			results.summary = cached.summary;
-			results.scores = cached.scores ?? [];
+			results.scores = cached.scores;
 			results.source = "cache";
 			results.savedAt = cached.savedAt ?? null;
 	
@@ -435,7 +439,8 @@ export async function fetchAllScores({ cache = true, pageSize = 200 } = {}) {
 		const summary = computeSummary(scores);
 		results.scores = scores;
 		results.summary = summary;
-		if (cache) {
+		// Never persist an empty result set — it would poison the cache for the next 3 months.
+		if (cache && scores.length) {
 			await saveScoreSummary(results, ALL_SCORE_SUMMARY_KEY);
 		}
 		results.source = "live";
@@ -504,7 +509,7 @@ export async function fetchSomeScores(ids, ...args) {
 	// console.log("fetchSomeScores():all-score cache present:", Boolean(allScoresCached?.scores?.length));
 
 	try {
-		if (cache && allScoresCached?.scores && isCacheWithinMonths(allScoresCached.savedAt, 3)) {
+		if (cache && allScoresCached?.scores?.length && isCacheWithinMonths(allScoresCached.savedAt, 3)) {
 			const scoreById = new Map(
 				allScoresCached.scores
 					.filter((score) => score?.id != null)

@@ -7033,19 +7033,15 @@ async function fetchAllScores({ pageSize = 200 } = {}) {
 		scores: [],
 		summary: null,
 		errorMessage: null,
-		source: "live",
-		savedAt: null,
 	};
 
 	try {
 		const scores = await fetchAllApiScores({ pageSize });
 		results.scores = scores;
 		results.summary = computeScoreSummary(scores);
-		results.savedAt = new Date().toISOString();
 		return results;
 	} catch (error) {
 		results.errorMessage = String(error?.message ?? error);
-		results.source = "unavailable";
 		return results;
 	}
 }
@@ -7093,8 +7089,6 @@ async function fetchTraits({ pageSize = 200 } = {}) {
 
 	return {
 		summary: computeTraitSummary(all),
-		source: "live",
-		savedAt: new Date().toISOString(),
 	};
 }
 
@@ -7210,8 +7204,6 @@ async function getScoresPerTrait({ maxTraits = Infinity, onStatus } = {}) {
 	report(`getScoresPerTrait: done — ${processedTraits} traits.`);
 
 	return {
-		savedAt: new Date().toISOString(),
-		sourceTraitSavedAt: traitPayload?.savedAt ?? null,
 		processedTraits,
 		totalTraitEntries: traitEntries.length,
 		scoresPerTrait,
@@ -7244,7 +7236,6 @@ async function getScoresPerCategory({ maxCategories = Infinity } = {}) {
 	}
 
 	return {
-		savedAt: new Date().toISOString(),
 		processedCategories: limitedCategories.length,
 		totalCategoryEntries: categories.length,
 		scoresPerCategory,
