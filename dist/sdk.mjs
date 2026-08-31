@@ -10713,7 +10713,7 @@ async function getPgsTxt(input, _unused, cache = true, build = 37) {
         throw new TypeError("getTxts expects a PGS id string, a path/URL string, or a File object");
     }
 
-    const cacheKey = `${PGS_KEY_PREFIX}${id}`;
+    const cacheKey = `${PGS_KEY_PREFIX}${id}-build${build}`;
 
     if (cache) {
         const cached = await localforage.getItem(cacheKey);
@@ -10740,7 +10740,7 @@ async function limitStorage(ids = []){
         }
         const entryBytes = getByteSize({ key, value });
         const createdAt = Number(value?.cachedAt) || 0;
-        const id = key.slice(PGS_KEY_PREFIX.length);
+        const id = String(value?.id ?? key.slice(PGS_KEY_PREFIX.length));
 
         entries.push({ key, id, entryBytes, createdAt });
         totalBytes += entryBytes;
